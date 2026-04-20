@@ -7,6 +7,7 @@ import { PasswordInput } from "@/components/PasswordInput";
 import { QrScanModal } from "@/components/QrScanModal";
 import { ReceiveModal } from "@/components/ReceiveModal";
 import { Onboarding } from "@/components/Onboarding";
+import { BotPanel } from "@/components/BotPanel";
 import { isAddress } from "ethers";
 import { getDefaultTokens, type TokenInfo } from "@/lib/tokens/registry";
 import { getCustomTokens, addCustomToken, removeCustomToken } from "@/lib/tokens/custom";
@@ -123,6 +124,7 @@ export default function Home() {
         {tab === "wallets" && <WalletsPanel state={state} setState={setState} chain={activeChain} sessionPwd={sessionPwd} />}
         {tab === "networks" && <NetworksPanel state={state} setState={setState} />}
         {tab === "send" && <SendPanel state={state} chain={activeChain} sessionPwd={sessionPwd} />}
+        {tab === "bot" && <BotPanel />}
         {tab === "connect" && (
           <ConnectPanel
             wcStatus={wcStatus}

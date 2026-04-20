@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { WalletRecord } from "@/lib/wallet/keystore";
 
-type Tab = "wallets" | "networks" | "send" | "connect";
+type Tab = "wallets" | "networks" | "send" | "connect" | "bot";
 
 export function Sidebar({
   tab,
@@ -69,16 +69,9 @@ export function Sidebar({
         <NavBtn label="Networks" icon="⬡" active={tab === "networks"} onClick={() => { onChange("networks"); setOpen(false); }} />
         <NavBtn label="Send" icon="↗" active={tab === "send"} onClick={() => { onChange("send"); setOpen(false); }} />
         <NavBtn label="WalletConnect" icon="⚡" active={tab === "connect"} onClick={() => { onChange("connect"); setOpen(false); }} />
+        <NavBtn label="Trading Bot" icon="🤖" active={tab === "bot"} onClick={() => { onChange("bot"); setOpen(false); }} />
 
         <div className="mt-auto">
-          <a
-            href="https://railway.com/project/b96511d2-4a39-4eeb-9364-fc6335bef7be"
-            target="_blank"
-            rel="noreferrer"
-            className="nav-item text-dim hover:text-accent w-full"
-          >
-            <span className="inline-block w-4 mr-2 text-center">🤖</span>Trading Bot →
-          </a>
           <button onClick={onLock} className="nav-item text-dim hover:text-danger w-full">
             <span className="inline-block w-4 mr-2 text-center">🔒</span>Lock wallet
           </button>
