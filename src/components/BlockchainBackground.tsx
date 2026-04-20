@@ -3,10 +3,10 @@ import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-const NODE_COUNT = 60;
+const NODE_COUNT = 45;
 const RADIUS = 5.5;
 const MAX_LINK_DIST = 3.0;
-const SPHERE_RADIUS = 0.22;
+const SPHERE_RADIUS = 0.5;
 
 export function BlockchainBackground() {
   return (
@@ -16,7 +16,7 @@ export function BlockchainBackground() {
         <Canvas
           camera={{ position: [0, 0, 11], fov: 55 }}
           dpr={[1, 1.5]}
-          gl={{ antialias: true, alpha: true }}
+          gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
           style={{ width: "100%", height: "100%" }}
         >
           <NodeMesh />
