@@ -19,6 +19,16 @@ export function BlockchainBackground() {
           gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
           style={{ width: "100%", height: "100%" }}
         >
+          {/* DIAGNOSTIC: hardcoded cube + sphere + NodeMesh. If we only see
+              the cube, something in NodeMesh is silently failing. */}
+          <mesh position={[-4, 2, 0]}>
+            <boxGeometry args={[1.2, 1.2, 1.2]} />
+            <meshBasicMaterial color="#ff3b5c" toneMapped={false} />
+          </mesh>
+          <mesh position={[4, -2, 0]}>
+            <sphereGeometry args={[1, 24, 24]} />
+            <meshBasicMaterial color="#3bffb1" toneMapped={false} />
+          </mesh>
           <NodeMesh />
         </Canvas>
       </div>
