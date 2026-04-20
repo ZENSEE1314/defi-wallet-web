@@ -9,14 +9,21 @@ const MAX_LINK_DIST = 3.5;
 
 export function BlockchainBackground() {
   return (
-    <div className="fixed inset-0 -z-10 pointer-events-none">
+    <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-[#070912] via-[#0c1224] to-[#1a0e2e]" />
-      <Canvas camera={{ position: [0, 0, 14], fov: 60 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }}>
-        <ambientLight intensity={0.4} />
-        <pointLight position={[10, 10, 10]} intensity={1.2} color="#5b8cff" />
-        <pointLight position={[-10, -10, 5]} intensity={0.8} color="#7bf0c0" />
-        <NodeMesh />
-      </Canvas>
+      <div className="absolute inset-0">
+        <Canvas
+          camera={{ position: [0, 0, 14], fov: 60 }}
+          dpr={[1, 1.5]}
+          gl={{ antialias: true, alpha: true }}
+          style={{ width: "100%", height: "100%" }}
+        >
+          <ambientLight intensity={0.4} />
+          <pointLight position={[10, 10, 10]} intensity={1.2} color="#5b8cff" />
+          <pointLight position={[-10, -10, 5]} intensity={0.8} color="#7bf0c0" />
+          <NodeMesh />
+        </Canvas>
+      </div>
       <div className="absolute inset-0 bg-gradient-to-t from-[#070912cc] via-transparent to-transparent" />
     </div>
   );
