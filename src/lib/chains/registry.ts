@@ -1,0 +1,21 @@
+export type Chain = {
+  id: number;
+  name: string;
+  symbol: string;
+  rpcUrl: string;
+  explorerUrl: string;
+  isCustom?: boolean;
+};
+
+export const BUILTIN_CHAINS: Chain[] = [
+  { id: 1, name: "Ethereum", symbol: "ETH", rpcUrl: "https://eth.llamarpc.com", explorerUrl: "https://etherscan.io" },
+  { id: 8453, name: "Base", symbol: "ETH", rpcUrl: "https://mainnet.base.org", explorerUrl: "https://basescan.org" },
+  { id: 42161, name: "Arbitrum One", symbol: "ETH", rpcUrl: "https://arb1.arbitrum.io/rpc", explorerUrl: "https://arbiscan.io" },
+  { id: 10, name: "Optimism", symbol: "ETH", rpcUrl: "https://mainnet.optimism.io", explorerUrl: "https://optimistic.etherscan.io" },
+  { id: 137, name: "Polygon", symbol: "MATIC", rpcUrl: "https://polygon-rpc.com", explorerUrl: "https://polygonscan.com" },
+  { id: 11155111, name: "Sepolia (testnet)", symbol: "ETH", rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com", explorerUrl: "https://sepolia.etherscan.io" }
+];
+
+export function findChain(chains: Chain[], id: number): Chain | undefined {
+  return chains.find((c) => c.id === id);
+}

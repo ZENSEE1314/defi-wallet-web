@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body { background: #0b0d12; color: #e6eaf2; }
+* { box-sizing: border-box; }
+
+@layer components {
+  .card { @apply bg-elev border border-border rounded-lg p-4 mb-3; }
+  .btn { @apply bg-accent text-white border-0 px-3.5 py-2 rounded-md text-sm cursor-pointer hover:brightness-110 disabled:opacity-50; }
+  .btn-secondary { @apply bg-elev2 border border-border text-text px-3.5 py-2 rounded-md text-sm cursor-pointer hover:brightness-110; }
+  .btn-danger { @apply bg-danger text-white px-3.5 py-2 rounded-md text-sm cursor-pointer hover:brightness-110; }
+  .btn-ghost { @apply bg-transparent text-dim px-2 py-1 text-xs cursor-pointer hover:text-text; }
+  .input { @apply bg-bg text-text border border-border rounded-md px-3 py-2 text-sm w-full focus:outline-none focus:border-accent; }
+  .label { @apply text-xs text-dim block mb-1; }
+  .nav-item { @apply text-left bg-transparent border-0 px-3 py-2.5 rounded-md text-sm text-text cursor-pointer hover:bg-elev2; }
+  .nav-item.active { @apply bg-elev2 text-accent; }
+  .badge { @apply inline-block px-2 py-0.5 rounded-full text-xs bg-elev2 text-dim; }
+  .modal-bg { @apply fixed inset-0 bg-black/60 flex items-center justify-center z-50; }
+  .modal { @apply bg-elev border border-border rounded-lg p-5 min-w-[420px] max-w-[560px]; }
+}
