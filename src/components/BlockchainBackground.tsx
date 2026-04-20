@@ -3,86 +3,185 @@ import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-const NODE_COUNT = 55;
-const RADIUS = 7;
-const MAX_LINK_DIST = 3.3;
-const SPHERE_RADIUS = 0.22;
+// JARVIS / Ironman HUD palette
+const CYAN = "#5ad6ff";
+const AMBER = "#ffb86b";
+const HOT = "#ff6b9a";
+const GRID = "#3a8fff";
 
 export function BlockchainBackground() {
   return (
     <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0a0d1a] via-[#0e1530] to-[#1f1240]" />
+      <div
+        className="absolute inset-0"
+        style={{ background: "radial-gradient(circle at 50% 50%, #0d1530 0%, #060914 60%, #02030a 100%)" }}
+      />
       <div className="absolute inset-0">
         <Canvas
-          camera={{ position: [0, 0, 11], fov: 55 }}
+          camera={{ position: [0, 0, 12], fov: 55 }}
           dpr={[1, 1.5]}
           gl={{ antialias: true, alpha: true }}
           style={{ width: "100%", height: "100%" }}
         >
-          <NodeMesh />
+          <Reactor />
+          <HexFloor />
+          <Particles />
         </Canvas>
       </div>
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0d1a99] via-transparent to-[#0a0d1a55]" />
+      {/* Vignette + faint scanlines for the HUD vibe */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 30%, rgba(2,3,10,0.5) 75%, rgba(2,3,10,0.85) 100%)"
+        }}
+      />
+      <div
+        className="absolute inset-0 mix-blend-overlay opacity-15"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, rgba(90,214,255,0.4) 0px, rgba(90,214,255,0.4) 1px, transparent 1px, transparent 3px)"
+        }}
+      />
     </div>
   );
 }
 
-function NodeMesh() {
-  const group = useRef<THREE.Group>(null);
-  const lineRef = useRef<THREE.LineSegments>(null);
+function Reactor() {
+  // Three concentric rotating wireframes — the core "arc reactor" feel.
+  const inner = useRef<THREE.Group>(null);
+  const middle = useRef<THREE.Group>(null);
+  const outer = useRef<THREE.Group>(null);
+  const torus = useRef<THREE.Mesh>(null);
 
-  const { positions, lineGeom } = useMemo(() => {
-    const rng = mulberry32(42);
-    const pts: THREE.Vector3[] = [];
-    for (let i = 0; i < NODE_COUNT; i++) {
-      const theta = rng() * Math.PI * 2;
-      const phi = Math.acos(2 * rng() - 1);
-      const r = RADIUS * (0.6 + rng() * 0.4);
-      pts.push(new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi)));
+  useFrame((_, dt) => {
+    if (inner.current) {
+      inner.current.rotation.x += dt * 0.25;
+      inner.current.rotation.y += dt * 0.35;
     }
-
-    const links: number[] = [];
-    for (let i = 0; i < pts.length; i++) {
-      for (let j = i + 1; j < pts.length; j++) {
-        if (pts[i].distanceTo(pts[j]) < MAX_LINK_DIST) {
-          links.push(pts[i].x, pts[i].y, pts[i].z, pts[j].x, pts[j].y, pts[j].z);
-        }
-      }
+    if (middle.current) {
+      middle.current.rotation.x -= dt * 0.18;
+      middle.current.rotation.y += dt * 0.22;
     }
-    // Build the line geometry imperatively — avoids the R3F bufferAttribute
-    // JSX form that has been finicky across versions.
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(links), 3));
-    return { positions: pts, lineGeom: geom };
-  }, []);
-
-  useFrame((_, delta) => {
-    if (group.current) {
-      group.current.rotation.y += delta * 0.07;
-      group.current.rotation.x += delta * 0.02;
+    if (outer.current) {
+      outer.current.rotation.y += dt * 0.12;
+      outer.current.rotation.z += dt * 0.05;
+    }
+    if (torus.current) {
+      torus.current.rotation.x = Math.PI / 2;
+      torus.current.rotation.z += dt * 0.4;
     }
   });
 
   return (
-    <group ref={group}>
-      {positions.map((p, i) => {
-        const palette = ["#7da8ff", "#7bf0c0", "#c89dff", "#ff9ec6"];
-        const color = palette[i % palette.length];
-        return (
-          <mesh key={i} position={p}>
-            <sphereGeometry args={[SPHERE_RADIUS, 16, 16]} />
-            <meshBasicMaterial color={color} toneMapped={false} />
-          </mesh>
-        );
-      })}
-      <lineSegments ref={lineRef} geometry={lineGeom}>
-        <lineBasicMaterial color="#7bf0c0" transparent opacity={0.55} toneMapped={false} />
+    <group>
+      {/* Outer wireframe icosahedron */}
+      <group ref={outer}>
+        <Wireframe geom={new THREE.IcosahedronGeometry(4.2, 1)} color={CYAN} opacity={0.55} />
+      </group>
+      {/* Middle wireframe octahedron */}
+      <group ref={middle}>
+        <Wireframe geom={new THREE.OctahedronGeometry(2.6, 0)} color={GRID} opacity={0.45} />
+      </group>
+      {/* Inner solid + emissive core */}
+      <group ref={inner}>
+        <mesh>
+          <icosahedronGeometry args={[1.0, 0]} />
+          <meshBasicMaterial color={AMBER} wireframe toneMapped={false} />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[0.4, 24, 24]} />
+          <meshBasicMaterial color={CYAN} toneMapped={false} />
+        </mesh>
+      </group>
+      {/* Torus ring around equator */}
+      <mesh ref={torus}>
+        <torusGeometry args={[5.2, 0.04, 8, 96]} />
+        <meshBasicMaterial color={CYAN} toneMapped={false} transparent opacity={0.7} />
+      </mesh>
+      {/* Second torus, tilted */}
+      <mesh rotation={[Math.PI / 4, 0, 0]}>
+        <torusGeometry args={[6.2, 0.025, 6, 96]} />
+        <meshBasicMaterial color={HOT} toneMapped={false} transparent opacity={0.45} />
+      </mesh>
+    </group>
+  );
+}
+
+// Renders a geometry as cyan wireframe edges only (cheaper than wireframe material on a mesh).
+function Wireframe({ geom, color, opacity }: { geom: THREE.BufferGeometry; color: string; opacity: number }) {
+  const lineGeom = useMemo(() => new THREE.EdgesGeometry(geom), [geom]);
+  return (
+    <lineSegments geometry={lineGeom}>
+      <lineBasicMaterial color={color} transparent opacity={opacity} toneMapped={false} />
+    </lineSegments>
+  );
+}
+
+// Receding hexagonal grid floor for depth (Tron / HUD vibe).
+function HexFloor() {
+  const ref = useRef<THREE.LineSegments>(null);
+  const geom = useMemo(() => {
+    const lines: number[] = [];
+    const size = 30;
+    const step = 1.4;
+    for (let z = -size; z <= size; z += step) {
+      lines.push(-size, -3, z, size, -3, z);
+    }
+    for (let x = -size; x <= size; x += step) {
+      lines.push(x, -3, -size, x, -3, size);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(lines), 3));
+    return g;
+  }, []);
+
+  useFrame((_, dt) => {
+    if (ref.current) {
+      // Scroll the grid forward to suggest forward motion through space.
+      ref.current.position.z = (ref.current.position.z + dt * 0.6) % 1.4;
+    }
+  });
+
+  return (
+    <group rotation={[-Math.PI / 12, 0, 0]} position={[0, -2, -2]}>
+      <lineSegments ref={ref} geometry={geom}>
+        <lineBasicMaterial color={GRID} transparent opacity={0.18} toneMapped={false} />
       </lineSegments>
     </group>
   );
 }
 
-// Deterministic random so the mesh is stable across renders.
+// Drifting particle field — adds depth + life without heavy postprocessing.
+function Particles() {
+  const ref = useRef<THREE.Points>(null);
+  const { geom, count } = useMemo(() => {
+    const N = 220;
+    const arr = new Float32Array(N * 3);
+    const rng = mulberry32(7);
+    for (let i = 0; i < N; i++) {
+      arr[i * 3 + 0] = (rng() - 0.5) * 30;
+      arr[i * 3 + 1] = (rng() - 0.5) * 20;
+      arr[i * 3 + 2] = (rng() - 0.5) * 30;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+    return { geom: g, count: N };
+  }, []);
+
+  useFrame((_, dt) => {
+    if (ref.current) {
+      ref.current.rotation.y += dt * 0.02;
+    }
+  });
+
+  return (
+    <points ref={ref} geometry={geom}>
+      <pointsMaterial color={CYAN} size={0.06} transparent opacity={0.7} sizeAttenuation toneMapped={false} />
+    </points>
+  );
+}
+
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
