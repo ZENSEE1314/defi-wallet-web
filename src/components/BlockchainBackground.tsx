@@ -3,10 +3,10 @@ import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-const NODE_COUNT = 45;
-const RADIUS = 5.5;
-const MAX_LINK_DIST = 3.0;
-const SPHERE_RADIUS = 0.5;
+const NODE_COUNT = 55;
+const RADIUS = 7;
+const MAX_LINK_DIST = 3.3;
+const SPHERE_RADIUS = 0.22;
 
 export function BlockchainBackground() {
   return (
@@ -16,19 +16,9 @@ export function BlockchainBackground() {
         <Canvas
           camera={{ position: [0, 0, 11], fov: 55 }}
           dpr={[1, 1.5]}
-          gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
+          gl={{ antialias: true, alpha: true }}
           style={{ width: "100%", height: "100%" }}
         >
-          {/* DIAGNOSTIC: hardcoded cube + sphere + NodeMesh. If we only see
-              the cube, something in NodeMesh is silently failing. */}
-          <mesh position={[-4, 2, 0]}>
-            <boxGeometry args={[1.2, 1.2, 1.2]} />
-            <meshBasicMaterial color="#ff3b5c" toneMapped={false} />
-          </mesh>
-          <mesh position={[4, -2, 0]}>
-            <sphereGeometry args={[1, 24, 24]} />
-            <meshBasicMaterial color="#3bffb1" toneMapped={false} />
-          </mesh>
           <NodeMesh />
         </Canvas>
       </div>
