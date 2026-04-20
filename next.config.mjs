@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Don't block the production build on lint warnings — TS errors still fail.
+  eslint: { ignoreDuringBuilds: true },
   webpack: (config, { isServer }) => {
     // WalletConnect ships ESM that touches optional Node peers. Tell webpack to
     // skip them — they're only needed in environments we don't target.

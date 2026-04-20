@@ -1,15 +1,27 @@
 // Wallet-side WalletConnect v2 bridge.
 // Pairs with dApps via wc: URI, surfaces session proposals/requests so the UI can approve or reject.
 
-import type { Web3Wallet } from "@walletconnect/web3wallet";
-import type { CoreTypes, ProposalTypes, SignClientTypes } from "@walletconnect/types";
+import type { CoreTypes, ProposalTypes } from "@walletconnect/types";
 import { JsonRpcProvider, Wallet, HDNodeWallet, getAddress, getBytes } from "ethers";
 import { BUILTIN_CHAINS, findChain, type Chain } from "../chains/registry";
 import { unlockWallet, deriveSigner, type WalletRecord } from "../wallet/keystore";
 
-let wallet: Web3Wallet | null = null;
-let pendingProposalHandler: ((p: SignClientTypes.EventArguments["session_proposal"]) => Promise<void>) | null = null;
-let pendingRequestHandler: ((r: SignClientTypes.EventArguments["session_request"]) => Promise<void>) | null = null;
+// The Web3Wallet runtime type is awkward to import as a type-only binding because
+// the package re-exports the class as a value. We hold the singleton internally
+// and rely on runtime checks.
+type Web3WalletInstance = {
+  pair: (args: { uri: string }) => Promise<void>;
+  approveSession: (args: { id: number; namespaces: Record<string, unknown> }) => Promise<unknown>;
+  rejectSession: (args: { id: number; reason: { code: number; message: string } }) => Promise<unknown>;
+  respondSessionRequest: (args: { topic: string; response: { id: number; jsonrpc: "2.0"; result?: unknown; error?: { code: number; message: string } } }) => Promise<unknown>;
+  disconnectSession: (args: { topic: string; reason: { code: number; message: string } }) => Promise<unknown>;
+  getActiveSessions: () => Record<string, { topic: string; peer: { metadata: CoreTypes.Metadata }; namespaces: Record<string, { chains?: string[] }> }>;
+  on: (event: string, handler: (...args: unknown[]) => void) => void;
+};
+
+let wallet: Web3WalletInstance | null = null;
+let pendingProposalHandler: ((p: { id: number; params: ProposalTypes.Struct & { proposer: { metadata: CoreTypes.Metadata } } }) => Promise<void>) | null = null;
+let pendingRequestHandler: ((r: { topic: string; id: number; params: { chainId: string; request: { method: string; params: unknown[] } } }) => Promise<void>) | null = null;
 
 export type Hooks = {
   getActiveWallet: () => WalletRecord | null;
@@ -35,7 +47,7 @@ export async function init(projectId: string, h: Hooks): Promise<void> {
   ]);
 
   const core = new Core({ projectId });
-  wallet = await Web3Wallet.init({
+  wallet = (await Web3Wallet.init({
     core,
     metadata: {
       name: "DeFi Wallet",
@@ -43,10 +55,10 @@ export async function init(projectId: string, h: Hooks): Promise<void> {
       url: typeof window !== "undefined" ? window.location.origin : "https://example.com",
       icons: []
     }
-  });
+  })) as unknown as Web3WalletInstance;
 
-  wallet.on("session_proposal", (p) => pendingProposalHandler?.(p));
-  wallet.on("session_request", (r) => pendingRequestHandler?.(r));
+  wallet.on("session_proposal", (p) => pendingProposalHandler?.(p as Parameters<NonNullable<typeof pendingProposalHandler>>[0]));
+  wallet.on("session_request", (r) => pendingRequestHandler?.(r as Parameters<NonNullable<typeof pendingRequestHandler>>[0]));
 
   pendingProposalHandler = handleProposal;
   pendingRequestHandler = handleRequest;
@@ -72,7 +84,10 @@ export async function disconnect(topic: string): Promise<void> {
   hooks?.onSessionsChanged();
 }
 
-async function handleProposal(p: SignClientTypes.EventArguments["session_proposal"]): Promise<void> {
+type ProposalArg = { id: number; params: ProposalTypes.Struct & { proposer: { metadata: CoreTypes.Metadata } } };
+type RequestArg = { topic: string; id: number; params: { chainId: string; request: { method: string; params: unknown[] } } };
+
+async function handleProposal(p: ProposalArg): Promise<void> {
   if (!wallet || !hooks) return;
   const requestedChains = extractRequestedChains(p.params);
   const ok = await hooks.promptApproveSession(p.params.proposer.metadata, requestedChains);
@@ -111,7 +126,7 @@ function extractRequestedChains(params: ProposalTypes.Struct): number[] {
   return [...out];
 }
 
-async function handleRequest(r: SignClientTypes.EventArguments["session_request"]): Promise<void> {
+async function handleRequest(r: RequestArg): Promise<void> {
   if (!wallet || !hooks) return;
   const { topic, params, id } = r;
   const { request, chainId } = params;
