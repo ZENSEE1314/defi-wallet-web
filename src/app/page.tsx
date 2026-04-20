@@ -6,6 +6,7 @@ import { PasswordPrompt } from "@/components/PasswordPrompt";
 import { PasswordInput } from "@/components/PasswordInput";
 import { QrScanModal } from "@/components/QrScanModal";
 import { ReceiveModal } from "@/components/ReceiveModal";
+import { AddWalletModal } from "@/components/AddWalletModal";
 import { Onboarding } from "@/components/Onboarding";
 import { BotPanel } from "@/components/BotPanel";
 import { isAddress } from "ethers";
@@ -193,6 +194,7 @@ function WalletsPanel({
   const [confirmDelete, setConfirmDelete] = useState<WalletRecord | null>(null);
   const [receiving, setReceiving] = useState<WalletRecord | null>(null);
   const [addingToken, setAddingToken] = useState(false);
+  const [addingWallet, setAddingWallet] = useState(false);
 
   // Refresh tokens whenever chain changes
   useEffect(() => {
@@ -215,6 +217,10 @@ function WalletsPanel({
   return (
     <>
       <PageHeader title="Wallets" subtitle={`${chain.name} · tap address to copy, scan to receive`} />
+      <div className="glass-card flex justify-between items-center">
+        <div className="text-sm text-dim">{state.wallets.length} wallet{state.wallets.length === 1 ? "" : "s"}</div>
+        <button className="btn" onClick={() => setAddingWallet(true)}>+ Add wallet</button>
+      </div>
       {state.wallets.map((w) => {
         const isActive = w.id === state.selectedWalletId;
         const bals = tokenBalances[w.id] ?? {};
@@ -274,6 +280,16 @@ function WalletsPanel({
           walletName={receiving.name}
           chainName={chain.name}
           onClose={() => setReceiving(null)}
+        />
+      )}
+
+      {addingWallet && (
+        <AddWalletModal
+          onClose={() => setAddingWallet(false)}
+          onDone={(record) => {
+            setState((s) => ({ ...s, wallets: [...s.wallets, record], selectedWalletId: record.id }));
+            setAddingWallet(false);
+          }}
         />
       )}
 
