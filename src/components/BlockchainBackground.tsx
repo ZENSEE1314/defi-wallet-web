@@ -16,13 +16,16 @@ export function BlockchainBackground() {
         <Canvas
           camera={{ position: [0, 0, 11], fov: 55 }}
           dpr={[1, 1.5]}
-          gl={{ antialias: true, alpha: true, preserveDrawingBuffer: false }}
+          gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
           style={{ width: "100%", height: "100%" }}
         >
+          {/* TEMP: giant test cube — if you can see hot pink, R3F is rendering. */}
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[3, 3, 3]} />
+            <meshBasicMaterial color="#ff00ff" toneMapped={false} />
+          </mesh>
           <ambientLight intensity={0.6} />
           <pointLight position={[10, 10, 10]} intensity={2.0} color="#5b8cff" />
-          <pointLight position={[-10, -10, 5]} intensity={1.5} color="#7bf0c0" />
-          <pointLight position={[0, 0, 8]} intensity={1.0} color="#a76dff" />
           <NodeMesh />
         </Canvas>
       </div>
