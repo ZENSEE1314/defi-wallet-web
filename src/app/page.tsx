@@ -3,23 +3,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { JsonRpcProvider, formatEther, parseEther } from "ethers";
 import { Sidebar, type Tab } from "@/components/Sidebar";
 import { PasswordPrompt } from "@/components/PasswordPrompt";
+import { PasswordInput } from "@/components/PasswordInput";
+import { Onboarding } from "@/components/Onboarding";
 import { loadState, saveState, type AppState } from "@/lib/storage/store";
 import { BUILTIN_CHAINS, findChain, type Chain } from "@/lib/chains/registry";
 import {
-  createMnemonicWallet,
-  importMnemonicWallet,
-  importPrivateKeyWallet,
   unlockWallet,
   deriveSigner,
   type WalletRecord
 } from "@/lib/wallet/keystore";
+import { hasPasskeyFor, removePasskey } from "@/lib/wallet/passkey";
 import { init as wcInit, pair as wcPair, getActiveSessions, disconnect as wcDisconnect } from "@/lib/walletconnect/bridge";
 
 type SessionView = ReturnType<typeof getActiveSessions>[number];
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("wallets");
   const [state, setState] = useState<AppState>(loadState());
+  const [tab, setTab] = useState<Tab>("wallets");
+  const [unlocked, setUnlocked] = useState(false);
+  // Session-only password cache. Cleared on tab close. Used to skip prompts
+  // during the same browser session if the user opted in.
+  const sessionPwd = useRef<string | null>(null);
   const [sessions, setSessions] = useState<SessionView[]>([]);
   const wcReady = useRef(false);
   const [pwdRequest, setPwdRequest] = useState<{ title: string; message: string; details?: string; resolve: (v: string | null) => void } | null>(null);
@@ -49,6 +53,8 @@ export default function Home() {
       onSessionsChanged: refreshSessions,
       promptPassword: (info) =>
         new Promise<string | null>((resolve) => {
+          // If we have a session-cached password, use it without prompting.
+          if (sessionPwd.current) return resolve(sessionPwd.current);
           setPwdRequest({
             title: `Confirm ${info.method}`,
             message: `dApp wants ${info.method} from ${info.address.slice(0, 8)}…${info.address.slice(-6)}`,
@@ -66,16 +72,39 @@ export default function Home() {
   }, [activeWallet, activeChain, allChains, refreshSessions]);
 
   useEffect(() => {
-    if (tab === "connect") void ensureWc();
-  }, [tab, ensureWc]);
+    if (tab === "connect" && unlocked) void ensureWc();
+  }, [tab, unlocked, ensureWc]);
+
+  function handleUnlocked(wallet: WalletRecord, password: string) {
+    sessionPwd.current = password;
+    setState((s) => ({ ...s, selectedWalletId: wallet.id }));
+    setUnlocked(true);
+  }
+
+  function handleCreated(record: WalletRecord, password: string) {
+    sessionPwd.current = password;
+    setState((s) => ({ ...s, wallets: [...s.wallets, record], selectedWalletId: record.id }));
+    setUnlocked(true);
+  }
+
+  function lock() {
+    sessionPwd.current = null;
+    setUnlocked(false);
+    wcReady.current = false;
+    setSessions([]);
+  }
+
+  if (!unlocked) {
+    return <Onboarding existingWallets={state.wallets} onCreated={handleCreated} onUnlocked={handleUnlocked} />;
+  }
 
   return (
     <div className="flex h-screen">
-      <Sidebar tab={tab} onChange={setTab} />
+      <Sidebar tab={tab} onChange={setTab} onLock={lock} activeWallet={activeWallet} />
       <main className="flex-1 overflow-y-auto p-6">
-        {tab === "wallets" && <WalletsPanel state={state} setState={setState} chain={activeChain} />}
+        {tab === "wallets" && <WalletsPanel state={state} setState={setState} chain={activeChain} sessionPwd={sessionPwd} />}
         {tab === "networks" && <NetworksPanel state={state} setState={setState} />}
-        {tab === "send" && <SendPanel state={state} chain={activeChain} />}
+        {tab === "send" && <SendPanel state={state} chain={activeChain} sessionPwd={sessionPwd} />}
         {tab === "connect" && (
           <ConnectPanel
             wcStatus={wcStatus}
@@ -125,8 +154,17 @@ export default function Home() {
   );
 }
 
-function WalletsPanel({ state, setState, chain }: { state: AppState; setState: (s: AppState) => void; chain: Chain }) {
-  const [mode, setMode] = useState<"none" | "create" | "import-mn" | "import-pk">("none");
+function WalletsPanel({
+  state,
+  setState,
+  chain,
+  sessionPwd
+}: {
+  state: AppState;
+  setState: (s: AppState | ((p: AppState) => AppState)) => void;
+  chain: Chain;
+  sessionPwd: React.MutableRefObject<string | null>;
+}) {
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [revealing, setRevealing] = useState<WalletRecord | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
@@ -141,28 +179,24 @@ function WalletsPanel({ state, setState, chain }: { state: AppState; setState: (
 
   return (
     <>
-      <h2 className="text-xl font-semibold mb-4">Wallets ({chain.name})</h2>
-      <div className="card flex gap-2">
-        <button className="btn" onClick={() => setMode("create")}>+ New wallet</button>
-        <button className="btn-secondary" onClick={() => setMode("import-mn")}>Import seed phrase</button>
-        <button className="btn-secondary" onClick={() => setMode("import-pk")}>Import private key</button>
-      </div>
-
-      {state.wallets.length === 0 && (
-        <div className="card text-center text-dim">No wallets yet. Create or import one to get started.</div>
-      )}
-
+      <PageHeader title="Wallets" subtitle={`${chain.name} · click an address to copy`} />
       {state.wallets.map((w) => (
         <div
           key={w.id}
-          className={`card cursor-pointer flex justify-between items-center ${w.id === state.selectedWalletId ? "border-accent" : ""}`}
-          onClick={() => setState({ ...state, selectedWalletId: w.id })}
+          className={`glass-card cursor-pointer flex justify-between items-center transition ${w.id === state.selectedWalletId ? "ring-1 ring-accent" : ""}`}
+          onClick={() => setState((s) => ({ ...s, selectedWalletId: w.id }))}
         >
-          <div>
-            <div className="font-semibold">{w.name} <span className="badge ml-1">{w.source}</span></div>
-            <div className="text-xs text-dim font-mono mt-0.5">{w.address}</div>
+          <div className="min-w-0">
+            <div className="font-semibold flex items-center gap-2">{w.name} <span className="badge">{w.source}</span></div>
+            <div
+              className="text-xs text-dim font-mono mt-0.5 truncate cursor-copy"
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(w.address); }}
+              title="Click to copy"
+            >
+              {w.address}
+            </div>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0 ml-3">
             <div className="text-accent2 font-semibold">{balances[w.id] ?? "…"} {chain.symbol}</div>
             <div className="flex gap-1 mt-1 justify-end">
               <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setRevealing(w); setRevealed(null); }}>Reveal</button>
@@ -171,17 +205,6 @@ function WalletsPanel({ state, setState, chain }: { state: AppState; setState: (
           </div>
         </div>
       ))}
-
-      {mode !== "none" && (
-        <CreateOrImportModal
-          mode={mode}
-          onClose={() => setMode("none")}
-          onDone={(record) => {
-            setState({ ...state, wallets: [...state.wallets, record], selectedWalletId: record.id });
-            setMode("none");
-          }}
-        />
-      )}
 
       {revealing && !revealed && (
         <PasswordPrompt
@@ -224,8 +247,10 @@ function WalletsPanel({ state, setState, chain }: { state: AppState; setState: (
               <button
                 className="btn-danger"
                 onClick={() => {
+                  if (hasPasskeyFor(confirmDelete.id)) removePasskey(confirmDelete.id);
                   const next = state.wallets.filter((x) => x.id !== confirmDelete.id);
                   const sel = state.selectedWalletId === confirmDelete.id ? (next[0]?.id ?? null) : state.selectedWalletId;
+                  if (state.selectedWalletId === confirmDelete.id) sessionPwd.current = null;
                   setState({ ...state, wallets: next, selectedWalletId: sel });
                   setConfirmDelete(null);
                 }}
@@ -240,90 +265,30 @@ function WalletsPanel({ state, setState, chain }: { state: AppState; setState: (
   );
 }
 
-function CreateOrImportModal({
-  mode,
-  onClose,
-  onDone
-}: {
-  mode: "create" | "import-mn" | "import-pk";
-  onClose: () => void;
-  onDone: (r: WalletRecord) => void;
-}) {
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
-  const [secret, setSecret] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function go() {
-    if (!name || password.length < 8) {
-      alert("Name required, password must be 8+ chars.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const rec =
-        mode === "create"
-          ? await createMnemonicWallet(name, password)
-          : mode === "import-mn"
-          ? await importMnemonicWallet(name, secret, password)
-          : await importPrivateKeyWallet(name, secret, password);
-      onDone(rec);
-    } catch (e) {
-      alert(`Failed: ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const title = mode === "create" ? "New wallet" : mode === "import-mn" ? "Import seed phrase" : "Import private key";
-
-  return (
-    <div className="modal-bg">
-      <div className="modal">
-        <h3 className="m-0 mb-3 text-base font-semibold">{title}</h3>
-        <div className="flex flex-col gap-3">
-          <div><label className="label">Name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Main wallet" /></div>
-          {mode !== "create" && (
-            <div>
-              <label className="label">{mode === "import-mn" ? "Seed phrase (12 or 24 words)" : "Private key (0x…)"}</label>
-              <textarea className="input" rows={3} value={secret} onChange={(e) => setSecret(e.target.value)} />
-            </div>
-          )}
-          <div><label className="label">Password (8+ chars)</label><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-        </div>
-        <div className="flex gap-2 mt-4 justify-end">
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn" onClick={go} disabled={busy}>{busy ? "Working…" : "Save"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NetworksPanel({ state, setState }: { state: AppState; setState: (s: AppState) => void }) {
+function NetworksPanel({ state, setState }: { state: AppState; setState: (s: AppState | ((p: AppState) => AppState)) => void }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ id: 0, name: "", symbol: "", rpcUrl: "", explorerUrl: "" });
   const all: Chain[] = [...BUILTIN_CHAINS, ...state.customChains.map((c) => ({ ...c, isCustom: true }))];
 
   return (
     <>
-      <h2 className="text-xl font-semibold mb-4">Networks</h2>
-      <div className="card"><button className="btn" onClick={() => setAdding(true)}>+ Add custom network</button></div>
+      <PageHeader title="Networks" subtitle="Built-in + custom EVM chains" />
+      <div className="glass-card"><button className="btn" onClick={() => setAdding(true)}>+ Add custom network</button></div>
 
       {all.map((c) => (
         <div
           key={c.id}
-          className={`card cursor-pointer flex justify-between items-center ${c.id === state.selectedChainId ? "border-accent" : ""}`}
-          onClick={() => setState({ ...state, selectedChainId: c.id })}
+          className={`glass-card cursor-pointer flex justify-between items-center transition ${c.id === state.selectedChainId ? "ring-1 ring-accent" : ""}`}
+          onClick={() => setState((s) => ({ ...s, selectedChainId: c.id }))}
         >
           <div>
             <div className="font-semibold">{c.name} {c.isCustom && <span className="badge ml-1">custom</span>}</div>
-            <div className="text-xs text-dim font-mono">Chain {c.id} • {c.symbol} • {c.rpcUrl}</div>
+            <div className="text-xs text-dim font-mono">Chain {c.id} · {c.symbol} · {c.rpcUrl}</div>
           </div>
           {c.isCustom && (
             <button
               className="btn-ghost text-danger"
-              onClick={(e) => { e.stopPropagation(); setState({ ...state, customChains: state.customChains.filter((x) => x.id !== c.id) }); }}
+              onClick={(e) => { e.stopPropagation(); setState((s) => ({ ...s, customChains: s.customChains.filter((x) => x.id !== c.id) })); }}
             >
               Remove
             </button>
@@ -349,7 +314,7 @@ function NetworksPanel({ state, setState }: { state: AppState; setState: (s: App
                 onClick={() => {
                   if (!form.id || !form.name || !form.rpcUrl) { alert("id, name, rpcUrl required"); return; }
                   if (all.some((c) => c.id === form.id)) { alert("That chain id already exists."); return; }
-                  setState({ ...state, customChains: [...state.customChains, form] });
+                  setState((s) => ({ ...s, customChains: [...s.customChains, form] }));
                   setAdding(false);
                   setForm({ id: 0, name: "", symbol: "", rpcUrl: "", explorerUrl: "" });
                 }}
@@ -364,7 +329,15 @@ function NetworksPanel({ state, setState }: { state: AppState; setState: (s: App
   );
 }
 
-function SendPanel({ state, chain }: { state: AppState; chain: Chain }) {
+function SendPanel({
+  state,
+  chain,
+  sessionPwd
+}: {
+  state: AppState;
+  chain: Chain;
+  sessionPwd: React.MutableRefObject<string | null>;
+}) {
   const wallet = state.wallets.find((w) => w.id === state.selectedWalletId);
   const [to, setTo] = useState("");
   const [value, setValue] = useState("");
@@ -374,11 +347,12 @@ function SendPanel({ state, chain }: { state: AppState; chain: Chain }) {
 
   async function send() {
     if (!wallet) return;
-    if (!to || !value || !password) { alert("Fill all fields."); return; }
+    const pwd = sessionPwd.current ?? password;
+    if (!to || !value || !pwd) { alert("Fill all fields."); return; }
     setBusy(true);
     setResult(null);
     try {
-      const secret = await unlockWallet(wallet, password);
+      const secret = await unlockWallet(wallet, pwd);
       const provider = new JsonRpcProvider(chain.rpcUrl, chain.id);
       const signer = deriveSigner(secret, wallet.source).connect(provider);
       const tx = await signer.sendTransaction({ to, value: parseEther(value) });
@@ -391,19 +365,19 @@ function SendPanel({ state, chain }: { state: AppState; chain: Chain }) {
     }
   }
 
-  if (!wallet) return <div className="card">Pick a wallet on the Wallets tab first.</div>;
+  if (!wallet) return <div className="glass-card">Pick a wallet on the Wallets tab first.</div>;
 
   return (
     <>
-      <h2 className="text-xl font-semibold mb-4">Send {chain.symbol} on {chain.name}</h2>
-      <div className="card flex flex-col gap-3 max-w-lg">
+      <PageHeader title={`Send ${chain.symbol}`} subtitle={`On ${chain.name}`} />
+      <div className="glass-card flex flex-col gap-3 max-w-lg">
         <div className="text-xs text-dim">From: <span className="font-mono">{wallet.address}</span></div>
         <div><label className="label">To address</label><input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" /></div>
         <div><label className="label">Amount ({chain.symbol})</label><input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.01" /></div>
-        <div><label className="label">Password</label><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+        {!sessionPwd.current && <PasswordInput label="Password" value={password} onChange={setPassword} placeholder="••••••••" />}
         <div><button className="btn" onClick={send} disabled={busy}>{busy ? "Sending…" : "Send"}</button></div>
         {result && (
-          <div className="text-xs text-accent2">
+          <div className="text-xs text-accent2 break-all">
             Sent — <a className="underline" target="_blank" rel="noreferrer" href={`${chain.explorerUrl}/tx/${result}`}>{result}</a>
           </div>
         )}
@@ -429,12 +403,12 @@ function ConnectPanel({
 }) {
   return (
     <>
-      <h2 className="text-xl font-semibold mb-4">WalletConnect</h2>
+      <PageHeader title="WalletConnect" subtitle="Connect any dApp via QR / URI" />
 
-      <div className="card max-w-2xl">
+      <div className="glass-card max-w-2xl">
         <p className="text-sm text-dim mb-3">
-          On the dApp (e.g. <a className="underline" target="_blank" rel="noreferrer" href="https://app.uniswap.org">app.uniswap.org</a>),
-          choose Connect → WalletConnect, then click "Copy URI" instead of scanning the QR. Paste it here.
+          On the dApp (e.g. <a className="underline text-accent" target="_blank" rel="noreferrer" href="https://app.uniswap.org">app.uniswap.org</a>),
+          choose Connect → WalletConnect → "Copy URI". Paste it here.
         </p>
         <div className="flex gap-2">
           <input className="input" placeholder="wc:abcd…" value={wcUri} onChange={(e) => setWcUri(e.target.value)} />
@@ -444,9 +418,9 @@ function ConnectPanel({
       </div>
 
       <h3 className="text-sm font-semibold uppercase tracking-wider text-dim mt-6 mb-2">Active sessions</h3>
-      {sessions.length === 0 && <div className="card text-dim text-sm">No active sessions.</div>}
+      {sessions.length === 0 && <div className="glass-card text-dim text-sm">No active sessions.</div>}
       {sessions.map((s) => (
-        <div key={s.topic} className="card flex justify-between items-center">
+        <div key={s.topic} className="glass-card flex justify-between items-center">
           <div>
             <div className="font-semibold">{s.peer.name || s.peer.url || "(unknown dApp)"}</div>
             <div className="text-xs text-dim font-mono">{s.peer.url}</div>
@@ -456,5 +430,14 @@ function ConnectPanel({
         </div>
       ))}
     </>
+  );
+}
+
+function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="mb-5">
+      <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+      {subtitle && <div className="text-xs text-dim mt-0.5">{subtitle}</div>}
+    </div>
   );
 }

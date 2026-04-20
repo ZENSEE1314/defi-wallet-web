@@ -8,6 +8,8 @@ html, body { background: #0b0d12; color: #e6eaf2; }
 
 @layer components {
   .card { @apply bg-elev border border-border rounded-lg p-4 mb-3; }
+  .glass-card { @apply bg-elev/60 backdrop-blur-xl border border-border rounded-xl p-4 mb-3 shadow-lg; }
+  .cursor-copy { cursor: copy; }
   .btn { @apply bg-accent text-white border-0 px-3.5 py-2 rounded-md text-sm cursor-pointer hover:brightness-110 disabled:opacity-50; }
   .btn-secondary { @apply bg-elev2 border border-border text-text px-3.5 py-2 rounded-md text-sm cursor-pointer hover:brightness-110; }
   .btn-danger { @apply bg-danger text-white px-3.5 py-2 rounded-md text-sm cursor-pointer hover:brightness-110; }
