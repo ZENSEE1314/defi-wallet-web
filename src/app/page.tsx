@@ -595,15 +595,22 @@ function BiometricToggle({
 
   if (!isPasskeySupported()) return null;
 
-  async function enroll(pwd: string) {
+  async function enroll(pwd: string, opts: { skipVerify?: boolean } = {}) {
     setBusy(true);
     try {
-      // Verify password before enrolling
-      await unlockWallet(wallet, pwd);
+      // Skip verification if we already have a valid session password — this
+      // preserves the user-gesture window so WebAuthn can fire immediately.
+      if (!opts.skipVerify) await unlockWallet(wallet, pwd);
       await enrollPasskey(wallet.id, pwd, wallet.name);
       setEnrolled(true);
     } catch (e) {
-      alert(`Couldn't enable biometric: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      // Specific messaging for the most common Windows error
+      if (/NotAllowed|not allowed/i.test(msg)) {
+        alert("Biometric setup was cancelled or blocked. Make sure Windows Hello is set up (Settings → Accounts → Sign-in options → PIN), then try again. The prompt must be answered within ~30 seconds.");
+      } else {
+        alert(`Couldn't enable biometric: ${msg}`);
+      }
     } finally {
       setBusy(false);
       setNeedPwd(false);
@@ -631,7 +638,9 @@ function BiometricToggle({
         disabled={busy}
         onClick={(e) => {
           e.stopPropagation();
-          if (sessionPwd.current) enroll(sessionPwd.current);
+          // If we have a session password, skip verification so the WebAuthn
+          // prompt fires inside the same user-gesture window.
+          if (sessionPwd.current) enroll(sessionPwd.current, { skipVerify: true });
           else setNeedPwd(true);
         }}
         title="Enable biometric unlock"
