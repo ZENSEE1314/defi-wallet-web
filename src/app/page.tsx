@@ -5,8 +5,12 @@ import { Sidebar, type Tab } from "@/components/Sidebar";
 import { PasswordPrompt } from "@/components/PasswordPrompt";
 import { PasswordInput } from "@/components/PasswordInput";
 import { QrScanModal } from "@/components/QrScanModal";
+import { ReceiveModal } from "@/components/ReceiveModal";
 import { Onboarding } from "@/components/Onboarding";
 import { isAddress } from "ethers";
+import { getDefaultTokens, type TokenInfo } from "@/lib/tokens/registry";
+import { getCustomTokens, addCustomToken, removeCustomToken } from "@/lib/tokens/custom";
+import { getErc20Balance, getErc20Metadata } from "@/lib/tokens/balance";
 import { loadState, saveState, type AppState } from "@/lib/storage/store";
 import { BUILTIN_CHAINS, findChain, type Chain } from "@/lib/chains/registry";
 import {
@@ -179,46 +183,109 @@ function WalletsPanel({
   chain: Chain;
   sessionPwd: React.MutableRefObject<string | null>;
 }) {
-  const [balances, setBalances] = useState<Record<string, string>>({});
+  const [nativeBal, setNativeBal] = useState<Record<string, string>>({});
+  const [tokenBalances, setTokenBalances] = useState<Record<string, Record<string, string>>>({}); // walletId → tokenAddr → balance
+  const [tokens, setTokens] = useState<TokenInfo[]>([]);
   const [revealing, setRevealing] = useState<WalletRecord | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<WalletRecord | null>(null);
+  const [receiving, setReceiving] = useState<WalletRecord | null>(null);
+  const [addingToken, setAddingToken] = useState(false);
 
+  // Refresh tokens whenever chain changes
+  useEffect(() => {
+    setTokens([...getDefaultTokens(chain.id), ...getCustomTokens(chain.id)]);
+  }, [chain.id]);
+
+  // Fetch balances
   useEffect(() => {
     const provider = new JsonRpcProvider(chain.rpcUrl, chain.id);
     state.wallets.forEach((w) => {
-      provider.getBalance(w.address).then((wei) => setBalances((p) => ({ ...p, [w.id]: formatEther(wei) }))).catch(() => {});
+      provider.getBalance(w.address).then((wei) => setNativeBal((p) => ({ ...p, [w.id]: formatEther(wei) }))).catch(() => {});
+      tokens.forEach((t) => {
+        getErc20Balance(provider, t.address, w.address, t.decimals)
+          .then((bal) => setTokenBalances((p) => ({ ...p, [w.id]: { ...(p[w.id] ?? {}), [t.address]: bal } })))
+          .catch(() => {});
+      });
     });
-  }, [state.wallets, chain]);
+  }, [state.wallets, chain, tokens]);
 
   return (
     <>
-      <PageHeader title="Wallets" subtitle={`${chain.name} · click an address to copy`} />
-      {state.wallets.map((w) => (
-        <div
-          key={w.id}
-          className={`glass-card cursor-pointer flex justify-between items-center transition ${w.id === state.selectedWalletId ? "ring-1 ring-accent" : ""}`}
-          onClick={() => setState((s) => ({ ...s, selectedWalletId: w.id }))}
-        >
-          <div className="min-w-0">
-            <div className="font-semibold flex items-center gap-2">{w.name} <span className="badge">{w.source}</span></div>
-            <div
-              className="text-xs text-dim font-mono mt-0.5 truncate cursor-copy"
-              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(w.address); }}
-              title="Click to copy"
-            >
-              {w.address}
+      <PageHeader title="Wallets" subtitle={`${chain.name} · tap address to copy, scan to receive`} />
+      {state.wallets.map((w) => {
+        const isActive = w.id === state.selectedWalletId;
+        const bals = tokenBalances[w.id] ?? {};
+        return (
+          <div
+            key={w.id}
+            className={`glass-card cursor-pointer transition ${isActive ? "ring-1 ring-accent" : ""}`}
+            onClick={() => setState((s) => ({ ...s, selectedWalletId: w.id }))}
+          >
+            <div className="flex justify-between items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold flex items-center gap-2">{w.name} <span className="badge">{w.source}</span></div>
+                <div
+                  className="text-xs text-dim font-mono mt-0.5 truncate cursor-copy"
+                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(w.address); }}
+                  title="Click to copy"
+                >
+                  {w.address}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-accent2 font-semibold">{nativeBal[w.id] ?? "…"} {chain.symbol}</div>
+              </div>
             </div>
-          </div>
-          <div className="text-right shrink-0 ml-3">
-            <div className="text-accent2 font-semibold">{balances[w.id] ?? "…"} {chain.symbol}</div>
-            <div className="flex gap-1 mt-1 justify-end">
+
+            {tokens.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-border space-y-1">
+                {tokens.map((t) => (
+                  <div key={t.address} className="flex justify-between items-center text-sm">
+                    <span className="text-dim">{t.symbol}</span>
+                    <span className="font-mono">{bals[t.address] ?? "…"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-1 mt-3 justify-end">
+              <button className="btn-ghost text-accent" onClick={(e) => { e.stopPropagation(); setReceiving(w); }}>Receive</button>
               <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setRevealing(w); setRevealed(null); }}>Reveal</button>
               <button className="btn-ghost text-danger" onClick={(e) => { e.stopPropagation(); setConfirmDelete(w); }}>Delete</button>
             </div>
           </div>
+        );
+      })}
+
+      {state.wallets.length > 0 && (
+        <div className="glass-card flex flex-wrap gap-2 items-center justify-between">
+          <div className="text-sm text-dim">Tokens shown ({tokens.length}) — USDT/USDC auto-included for {chain.name}</div>
+          <button className="btn-secondary" onClick={() => setAddingToken(true)}>+ Add token</button>
         </div>
-      ))}
+      )}
+
+      {receiving && (
+        <ReceiveModal
+          address={receiving.address}
+          walletName={receiving.name}
+          chainName={chain.name}
+          onClose={() => setReceiving(null)}
+        />
+      )}
+
+      {addingToken && (
+        <AddTokenModal
+          chainId={chain.id}
+          rpcUrl={chain.rpcUrl}
+          existingAddrs={tokens.map((t) => t.address.toLowerCase())}
+          onClose={() => setAddingToken(false)}
+          onAdded={() => {
+            setTokens([...getDefaultTokens(chain.id), ...getCustomTokens(chain.id)]);
+            setAddingToken(false);
+          }}
+        />
+      )}
 
       {revealing && !revealed && (
         <PasswordPrompt
@@ -505,6 +572,79 @@ function ConnectPanel({
         </div>
       ))}
     </>
+  );
+}
+
+function AddTokenModal({
+  chainId,
+  rpcUrl,
+  existingAddrs,
+  onClose,
+  onAdded
+}: {
+  chainId: number;
+  rpcUrl: string;
+  existingAddrs: string[];
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [addr, setAddr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ symbol: string; name: string; decimals: number } | null>(null);
+
+  async function lookup() {
+    setErr(null);
+    setPreview(null);
+    if (!isAddress(addr)) return setErr("Not a valid contract address.");
+    if (existingAddrs.includes(addr.toLowerCase())) return setErr("Token already added.");
+    setBusy(true);
+    try {
+      const provider = new JsonRpcProvider(rpcUrl, chainId);
+      const meta = await getErc20Metadata(provider, addr);
+      setPreview(meta);
+    } catch (e) {
+      setErr(`Couldn't read token: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function add() {
+    if (!preview) return;
+    addCustomToken(chainId, { address: addr, ...preview });
+    onAdded();
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-semibold">Add custom token</h3>
+          <button onClick={onClose} className="text-dim hover:text-text text-xl leading-none">×</button>
+        </div>
+        <p className="text-xs text-dim mb-3">Paste the ERC-20 contract address. The bot will read symbol + decimals from the chain.</p>
+        <div>
+          <label className="label">Contract address</label>
+          <input className="input font-mono text-xs" value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="0x…" onKeyDown={(e) => e.key === "Enter" && lookup()} />
+        </div>
+        {err && <div className="text-xs text-danger mt-2">{err}</div>}
+        {preview && (
+          <div className="mt-3 p-3 bg-bg/60 border border-border rounded-md text-sm">
+            <div className="font-semibold">{preview.name} <span className="text-dim font-normal">({preview.symbol})</span></div>
+            <div className="text-xs text-dim">decimals: {preview.decimals}</div>
+          </div>
+        )}
+        <div className="flex gap-2 mt-4 justify-end">
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          {preview ? (
+            <button className="btn" onClick={add}>Add token</button>
+          ) : (
+            <button className="btn" onClick={lookup} disabled={busy || !addr}>{busy ? "Reading…" : "Look up"}</button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
