@@ -10,7 +10,7 @@ const SPHERE_RADIUS = 0.18;
 
 export function BlockchainBackground() {
   return (
-    <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+    <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-[#0a0d1a] via-[#0e1530] to-[#1f1240]" />
       <div className="absolute inset-0">
         <Canvas

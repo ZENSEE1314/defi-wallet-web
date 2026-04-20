@@ -105,16 +105,15 @@ export default function Home() {
   }
 
   if (!hydrated) {
-    // Render an empty shell on SSR/first-render so hydration matches.
-    return <div className="min-h-screen" />;
+    return <div className="min-h-screen relative z-10" />;
   }
 
   if (!unlocked) {
-    return <Onboarding existingWallets={state.wallets} onCreated={handleCreated} onUnlocked={handleUnlocked} />;
+    return <div className="relative z-10"><Onboarding existingWallets={state.wallets} onCreated={handleCreated} onUnlocked={handleUnlocked} /></div>;
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen relative z-10">
       <Sidebar tab={tab} onChange={setTab} onLock={lock} activeWallet={activeWallet} />
       <main className="flex-1 overflow-y-auto p-6">
         {tab === "wallets" && <WalletsPanel state={state} setState={setState} chain={activeChain} sessionPwd={sessionPwd} />}
