@@ -1,9 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  webpack: (config) => {
-    // WalletConnect ships ESM that needs these polyfills disabled.
+  webpack: (config, { isServer }) => {
+    // WalletConnect ships ESM that touches optional Node peers. Tell webpack to
+    // skip them — they're only needed in environments we don't target.
+    config.externals = [...(config.externals || []), "pino-pretty", "lokijs", "encoding"];
     config.resolve.fallback = { ...config.resolve.fallback, fs: false, net: false, tls: false };
+    if (!isServer) {
+      // Some WalletConnect deps reference Node modules from the browser bundle —
+      // alias them to false so webpack drops the imports.
+      config.resolve.alias = { ...config.resolve.alias, "pino-pretty": false };
+    }
     return config;
   }
 };
