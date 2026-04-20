@@ -4,7 +4,9 @@ import { JsonRpcProvider, formatEther, parseEther } from "ethers";
 import { Sidebar, type Tab } from "@/components/Sidebar";
 import { PasswordPrompt } from "@/components/PasswordPrompt";
 import { PasswordInput } from "@/components/PasswordInput";
+import { QrScanModal } from "@/components/QrScanModal";
 import { Onboarding } from "@/components/Onboarding";
+import { isAddress } from "ethers";
 import { loadState, saveState, type AppState } from "@/lib/storage/store";
 import { BUILTIN_CHAINS, findChain, type Chain } from "@/lib/chains/registry";
 import {
@@ -344,6 +346,21 @@ function SendPanel({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+
+  function handleAddressScan(text: string): boolean {
+    // Accept bare 0x… addresses and EIP-681 URIs like ethereum:0xabc?value=1e18
+    const m = text.match(/0x[a-fA-F0-9]{40}/);
+    if (!m) return false;
+    setTo(m[0]);
+    const valueMatch = text.match(/[?&]value=(\d+(?:\.\d+)?(?:e\d+)?)/);
+    if (valueMatch) {
+      const num = Number(valueMatch[1]);
+      // EIP-681 value is in wei; if this looks like wei (>1e10) divide by 1e18.
+      setValue(num > 1e10 ? (num / 1e18).toString() : num.toString());
+    }
+    return true;
+  }
 
   async function send() {
     if (!wallet) return;
@@ -372,7 +389,16 @@ function SendPanel({
       <PageHeader title={`Send ${chain.symbol}`} subtitle={`On ${chain.name}`} />
       <div className="glass-card flex flex-col gap-3 max-w-lg">
         <div className="text-xs text-dim">From: <span className="font-mono">{wallet.address}</span></div>
-        <div><label className="label">To address</label><input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" /></div>
+        <div>
+          <label className="label">To address</label>
+          <div className="flex gap-2">
+            <input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" />
+            <button type="button" className="btn-secondary shrink-0" onClick={() => setScanning(true)} title="Scan QR">
+              <ScanIcon />
+            </button>
+          </div>
+          {to && !isAddress(to) && <div className="text-[11px] text-warning mt-1">Not a valid address.</div>}
+        </div>
         <div><label className="label">Amount ({chain.symbol})</label><input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.01" /></div>
         {!sessionPwd.current && <PasswordInput label="Password" value={password} onChange={setPassword} placeholder="••••••••" />}
         <div><button className="btn" onClick={send} disabled={busy}>{busy ? "Sending…" : "Send"}</button></div>
@@ -382,7 +408,24 @@ function SendPanel({
           </div>
         )}
       </div>
+      {scanning && (
+        <QrScanModal
+          title="Scan recipient address"
+          hint="Point at a wallet QR (0x… or ethereum: URI)"
+          onScan={handleAddressScan}
+          onClose={() => setScanning(false)}
+        />
+      )}
     </>
+  );
+}
+
+function ScanIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+      <rect x="7" y="7" width="10" height="10" rx="1" />
+    </svg>
   );
 }
 
@@ -401,6 +444,8 @@ function ConnectPanel({
   pair: () => Promise<void>;
   disconnect: (topic: string) => Promise<void>;
 }) {
+  const [scanning, setScanning] = useState(false);
+
   return (
     <>
       <PageHeader title="WalletConnect" subtitle="Connect any dApp via QR / URI" />
@@ -408,14 +453,32 @@ function ConnectPanel({
       <div className="glass-card max-w-2xl">
         <p className="text-sm text-dim mb-3">
           On the dApp (e.g. <a className="underline text-accent" target="_blank" rel="noreferrer" href="https://app.uniswap.org">app.uniswap.org</a>),
-          choose Connect → WalletConnect → "Copy URI". Paste it here.
+          choose Connect → WalletConnect, then either tap the camera icon below to <strong>scan the QR</strong> or click "Copy URI" and paste below.
         </p>
         <div className="flex gap-2">
           <input className="input" placeholder="wc:abcd…" value={wcUri} onChange={(e) => setWcUri(e.target.value)} />
+          <button type="button" className="btn-secondary shrink-0" onClick={() => setScanning(true)} title="Scan QR">
+            <ScanIcon />
+          </button>
           <button className="btn" onClick={pair} disabled={!wcUri}>Pair</button>
         </div>
         {wcStatus && <div className="text-xs text-warning mt-2">{wcStatus}</div>}
       </div>
+
+      {scanning && (
+        <QrScanModal
+          title="Scan WalletConnect QR"
+          hint="Open the dApp, choose WalletConnect, and aim at the QR code."
+          onScan={(text) => {
+            if (!text.startsWith("wc:")) return false;
+            setWcUri(text);
+            // Auto-pair right after scanning.
+            setTimeout(() => pair(), 100);
+            return true;
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
 
       <h3 className="text-sm font-semibold uppercase tracking-wider text-dim mt-6 mb-2">Active sessions</h3>
       {sessions.length === 0 && <div className="glass-card text-dim text-sm">No active sessions.</div>}

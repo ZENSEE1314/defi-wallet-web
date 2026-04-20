@@ -8,6 +8,7 @@ import {
   type WalletRecord
 } from "@/lib/wallet/keystore";
 import { PasswordInput } from "./PasswordInput";
+import { QrScanModal } from "./QrScanModal";
 import { enrollPasskey, hasPasskeyFor, isPasskeySupported, unlockWithPasskey } from "@/lib/wallet/passkey";
 
 type Mode = "landing" | "create" | "unlock" | "restore";
@@ -228,6 +229,7 @@ function RestoreForm({ onBack, onDone }: { onBack: () => void; onDone: (r: Walle
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   async function go() {
     setErr(null);
@@ -261,12 +263,29 @@ function RestoreForm({ onBack, onDone }: { onBack: () => void; onDone: (r: Walle
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div>
-        <label className="label">{type === "mnemonic" ? "Seed phrase (12 or 24 words)" : "Private key (0x…)"}</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="label !mb-0">{type === "mnemonic" ? "Seed phrase (12 or 24 words)" : "Private key (0x…)"}</label>
+          <button type="button" onClick={() => setScanning(true)} className="text-xs text-accent hover:underline">Scan QR</button>
+        </div>
         <textarea className="input font-mono text-xs" rows={3} value={secret} onChange={(e) => setSecret(e.target.value)} />
       </div>
       <PasswordInput label="New password (8+ chars)" value={password} onChange={setPassword} showStrength onEnter={go} />
       {err && <div className="text-xs text-danger">{err}</div>}
       <button className="btn w-full mt-2" onClick={go} disabled={busy}>{busy ? "Restoring…" : "Restore wallet"}</button>
+      {scanning && (
+        <QrScanModal
+          title={type === "mnemonic" ? "Scan seed phrase QR" : "Scan private key QR"}
+          hint="Make sure no one else can see your screen — this secret controls the wallet."
+          onScan={(text) => {
+            const trimmed = text.trim();
+            if (type === "pk" && !/^(0x)?[a-fA-F0-9]{64}$/.test(trimmed.replace(/^0x/, ""))) return false;
+            if (type === "mnemonic" && trimmed.split(/\s+/).length < 12) return false;
+            setSecret(trimmed);
+            return true;
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
     </div>
   );
 }
