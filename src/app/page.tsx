@@ -450,6 +450,7 @@ function SendPanel({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [balance, setBalance] = useState<string | null>(null);
 
   useEffect(() => {
     setTokens([...getDefaultTokens(chain.id), ...getCustomTokens(chain.id)]);
@@ -458,6 +459,32 @@ function SendPanel({
   const selectedToken = tokens.find((t) => t.address === tokenAddr);
   const symbol = selectedToken?.symbol ?? chain.symbol;
   const decimals = selectedToken?.decimals ?? 18;
+
+  // Reserve for native gas — keep ~0.001 native (covers many txs on cheap chains).
+  const NATIVE_GAS_RESERVE = 0.001;
+
+  // Refresh balance whenever wallet / chain / token changes
+  useEffect(() => {
+    if (!wallet) return;
+    setBalance(null);
+    const provider = new JsonRpcProvider(chain.rpcUrl, chain.id);
+    if (tokenAddr === "native") {
+      provider.getBalance(wallet.address).then((wei) => setBalance(formatEther(wei))).catch(() => setBalance("?"));
+    } else {
+      getErc20Balance(provider, tokenAddr, wallet.address, decimals).then(setBalance).catch(() => setBalance("?"));
+    }
+  }, [wallet, chain, tokenAddr, decimals, result]);
+
+  function setMax() {
+    if (!balance || balance === "?") return;
+    if (tokenAddr === "native") {
+      const bal = Number(balance);
+      const max = Math.max(0, bal - NATIVE_GAS_RESERVE);
+      setValue(max > 0 ? max.toFixed(6) : "0");
+    } else {
+      setValue(balance);
+    }
+  }
 
   function handleAddressScan(text: string): boolean {
     const m = text.match(/0x[a-fA-F0-9]{40}/);
@@ -527,7 +554,21 @@ function SendPanel({
           </div>
           {to && !isAddress(to) && <div className="text-[11px] text-warning mt-1">Not a valid address.</div>}
         </div>
-        <div><label className="label">Amount ({symbol})</label><input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.01" /></div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="label !mb-0">Amount ({symbol})</label>
+            <div className="text-xs text-dim">
+              Balance: <span className="text-accent2 font-mono">{balance ?? "…"}</span> {symbol}
+              {balance && balance !== "?" && (
+                <button type="button" onClick={setMax} className="ml-2 text-accent hover:underline">Max</button>
+              )}
+            </div>
+          </div>
+          <input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.01" inputMode="decimal" />
+          {tokenAddr === "native" && balance && balance !== "?" && (
+            <div className="text-[11px] text-dim mt-1">Max keeps {NATIVE_GAS_RESERVE} {symbol} for gas.</div>
+          )}
+        </div>
         {!sessionPwd.current && <PasswordInput label="Password" value={password} onChange={setPassword} placeholder="••••••••" />}
         <div><button className="btn" onClick={send} disabled={busy}>{busy ? "Sending…" : `Send ${symbol}`}</button></div>
         {result && (
