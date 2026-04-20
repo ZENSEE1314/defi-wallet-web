@@ -13,7 +13,7 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #5b8cff 0%, #7a3dff 60%, #ff3b9a 100%)",
+          background: "#5b8cff",
           color: "white",
           fontWeight: 800,
           fontSize: 42,
@@ -21,7 +21,7 @@ export default function Icon() {
           borderRadius: 14
         }}
       >
-        ◆
+        D
       </div>
     ),
     { ...size }

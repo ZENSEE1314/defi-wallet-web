@@ -13,29 +13,91 @@ export default function OG() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          background: "radial-gradient(circle at 30% 30%, #1a1f3d 0%, #0a0d1a 50%, #050614 100%)",
-          color: "white",
+          background: "#0a0d1a",
+          backgroundImage: "radial-gradient(circle at 30% 30%, #1a1f3d 0%, #0a0d1a 50%, #050614 100%)",
+          color: "#ffffff",
           fontFamily: "system-ui, sans-serif",
-          padding: 80,
+          padding: "80px",
           position: "relative"
         }}
       >
-        <div style={{ position: "absolute", inset: 0, opacity: 0.18, backgroundImage: "linear-gradient(#5b8cff 1px, transparent 1px), linear-gradient(90deg, #5b8cff 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 40 }}>
-          <div style={{ width: 72, height: 72, borderRadius: 18, background: "linear-gradient(135deg, #5b8cff 0%, #7a3dff 60%, #ff3b9a 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44, fontWeight: 800 }}>◆</div>
-          <div style={{ fontSize: 32, fontWeight: 600, letterSpacing: -0.5 }}>DeFi Wallet</div>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 48 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 72,
+              height: 72,
+              borderRadius: 18,
+              background: "#5b8cff",
+              color: "#ffffff",
+              fontSize: 44,
+              fontWeight: 800,
+              marginRight: 18
+            }}
+          >
+            D
+          </div>
+          <div style={{ display: "flex", fontSize: 32, fontWeight: 600 }}>DeFi Wallet</div>
         </div>
-        <div style={{ fontSize: 84, fontWeight: 800, lineHeight: 1.05, letterSpacing: -2, marginBottom: 32, maxWidth: 1000 }}>
+
+        <div
+          style={{
+            display: "flex",
+            fontSize: 84,
+            fontWeight: 800,
+            lineHeight: 1.05,
+            letterSpacing: -2,
+            marginBottom: 24,
+            maxWidth: 1000
+          }}
+        >
           Self-custody crypto wallet
-          <br />
-          <span style={{ background: "linear-gradient(90deg, #5b8cff, #7bf0c0)", WebkitBackgroundClip: "text", color: "transparent" }}>in your browser</span>
         </div>
-        <div style={{ fontSize: 30, color: "#8a93a8", maxWidth: 900, lineHeight: 1.3 }}>
+
+        <div
+          style={{
+            display: "flex",
+            fontSize: 72,
+            fontWeight: 800,
+            lineHeight: 1.05,
+            letterSpacing: -2,
+            marginBottom: 36,
+            color: "#7bf0c0"
+          }}
+        >
+          in your browser
+        </div>
+
+        <div style={{ display: "flex", fontSize: 30, color: "#8a93a8", maxWidth: 900, lineHeight: 1.3 }}>
           Multi-chain · WalletConnect v2 · Biometric unlock · QR scan
         </div>
-        <div style={{ position: "absolute", bottom: 60, left: 80, right: 80, display: "flex", gap: 12 }}>
+
+        <div
+          style={{
+            position: "absolute",
+            bottom: 60,
+            left: 80,
+            right: 80,
+            display: "flex",
+            flexWrap: "wrap"
+          }}
+        >
           {["Ethereum", "Base", "Arbitrum", "Optimism", "Polygon", "BSC"].map((c) => (
-            <div key={c} style={{ padding: "10px 18px", borderRadius: 999, background: "#1a2444", border: "1px solid #3a5da8", color: "#a5c0ff", fontSize: 22 }}>
+            <div
+              key={c}
+              style={{
+                display: "flex",
+                padding: "10px 18px",
+                marginRight: 12,
+                borderRadius: 999,
+                background: "#1a2444",
+                border: "1px solid #3a5da8",
+                color: "#a5c0ff",
+                fontSize: 22
+              }}
+            >
               {c}
             </div>
           ))}
