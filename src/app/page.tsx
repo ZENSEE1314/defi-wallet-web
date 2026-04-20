@@ -20,9 +20,17 @@ import { init as wcInit, pair as wcPair, getActiveSessions, disconnect as wcDisc
 type SessionView = ReturnType<typeof getActiveSessions>[number];
 
 export default function Home() {
-  const [state, setState] = useState<AppState>(loadState());
+  // Start with empty default on every render so SSR + first client render match.
+  // Real state is hydrated from localStorage in the effect below.
+  const [state, setState] = useState<AppState>({ wallets: [], selectedWalletId: null, customChains: [], selectedChainId: 1 });
+  const [hydrated, setHydrated] = useState(false);
   const [tab, setTab] = useState<Tab>("wallets");
   const [unlocked, setUnlocked] = useState(false);
+
+  useEffect(() => {
+    setState(loadState());
+    setHydrated(true);
+  }, []);
   // Session-only password cache. Cleared on tab close. Used to skip prompts
   // during the same browser session if the user opted in.
   const sessionPwd = useRef<string | null>(null);
@@ -33,7 +41,7 @@ export default function Home() {
   const [wcUri, setWcUri] = useState("");
   const [wcStatus, setWcStatus] = useState<string | null>(null);
 
-  useEffect(() => saveState(state), [state]);
+  useEffect(() => { if (hydrated) saveState(state); }, [state, hydrated]);
 
   const allChains: Chain[] = [...BUILTIN_CHAINS, ...state.customChains.map((c) => ({ ...c, isCustom: true }))];
   const activeChain = findChain(allChains, state.selectedChainId) ?? BUILTIN_CHAINS[0];
@@ -94,6 +102,11 @@ export default function Home() {
     setUnlocked(false);
     wcReady.current = false;
     setSessions([]);
+  }
+
+  if (!hydrated) {
+    // Render an empty shell on SSR/first-render so hydration matches.
+    return <div className="min-h-screen" />;
   }
 
   if (!unlocked) {
