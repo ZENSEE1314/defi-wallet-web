@@ -3,28 +3,30 @@ import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-const NODE_COUNT = 50;
-const RADIUS = 8;
-const MAX_LINK_DIST = 3.5;
+const NODE_COUNT = 70;
+const RADIUS = 6;
+const MAX_LINK_DIST = 3.2;
+const SPHERE_RADIUS = 0.18;
 
 export function BlockchainBackground() {
   return (
     <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#070912] via-[#0c1224] to-[#1a0e2e]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0a0d1a] via-[#0e1530] to-[#1f1240]" />
       <div className="absolute inset-0">
         <Canvas
-          camera={{ position: [0, 0, 14], fov: 60 }}
+          camera={{ position: [0, 0, 11], fov: 55 }}
           dpr={[1, 1.5]}
-          gl={{ antialias: true, alpha: true }}
+          gl={{ antialias: true, alpha: true, preserveDrawingBuffer: false }}
           style={{ width: "100%", height: "100%" }}
         >
-          <ambientLight intensity={0.4} />
-          <pointLight position={[10, 10, 10]} intensity={1.2} color="#5b8cff" />
-          <pointLight position={[-10, -10, 5]} intensity={0.8} color="#7bf0c0" />
+          <ambientLight intensity={0.6} />
+          <pointLight position={[10, 10, 10]} intensity={2.0} color="#5b8cff" />
+          <pointLight position={[-10, -10, 5]} intensity={1.5} color="#7bf0c0" />
+          <pointLight position={[0, 0, 8]} intensity={1.0} color="#a76dff" />
           <NodeMesh />
         </Canvas>
       </div>
-      <div className="absolute inset-0 bg-gradient-to-t from-[#070912cc] via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0d1a99] via-transparent to-[#0a0d1a55]" />
     </div>
   );
 }
@@ -66,17 +68,21 @@ function NodeMesh() {
 
   return (
     <group ref={group}>
-      {positions.map((p, i) => (
-        <mesh key={i} position={p}>
-          <sphereGeometry args={[0.08, 16, 16]} />
-          <meshStandardMaterial color="#5b8cff" emissive="#5b8cff" emissiveIntensity={1.4} />
-        </mesh>
-      ))}
+      {positions.map((p, i) => {
+        const palette = ["#5b8cff", "#7bf0c0", "#a76dff", "#ff7eb6"];
+        const color = palette[i % palette.length];
+        return (
+          <mesh key={i} position={p}>
+            <sphereGeometry args={[SPHERE_RADIUS, 20, 20]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2.2} toneMapped={false} />
+          </mesh>
+        );
+      })}
       <lineSegments ref={lineRef}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[linkPositions, 3]} count={linkPositions.length / 3} />
         </bufferGeometry>
-        <lineBasicMaterial color="#7bf0c0" transparent opacity={0.2} />
+        <lineBasicMaterial color="#7bf0c0" transparent opacity={0.45} toneMapped={false} />
       </lineSegments>
     </group>
   );
