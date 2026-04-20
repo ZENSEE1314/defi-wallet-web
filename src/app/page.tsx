@@ -18,7 +18,7 @@ import {
   deriveSigner,
   type WalletRecord
 } from "@/lib/wallet/keystore";
-import { hasPasskeyFor, removePasskey } from "@/lib/wallet/passkey";
+import { hasPasskeyFor, removePasskey, enrollPasskey, isPasskeySupported } from "@/lib/wallet/passkey";
 import { init as wcInit, pair as wcPair, getActiveSessions, disconnect as wcDisconnect } from "@/lib/walletconnect/bridge";
 
 type SessionView = ReturnType<typeof getActiveSessions>[number];
@@ -249,8 +249,9 @@ function WalletsPanel({
               </div>
             )}
 
-            <div className="flex gap-1 mt-3 justify-end">
+            <div className="flex gap-1 mt-3 justify-end flex-wrap">
               <button className="btn-ghost text-accent" onClick={(e) => { e.stopPropagation(); setReceiving(w); }}>Receive</button>
+              <BiometricToggle wallet={w} sessionPwd={sessionPwd} />
               <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setRevealing(w); setRevealed(null); }}>Reveal</button>
               <button className="btn-ghost text-danger" onClick={(e) => { e.stopPropagation(); setConfirmDelete(w); }}>Delete</button>
             </div>
@@ -571,6 +572,78 @@ function ConnectPanel({
           <button className="btn-danger" onClick={() => disconnect(s.topic)}>Disconnect</button>
         </div>
       ))}
+    </>
+  );
+}
+
+function BiometricToggle({
+  wallet,
+  sessionPwd
+}: {
+  wallet: WalletRecord;
+  sessionPwd: React.MutableRefObject<string | null>;
+}) {
+  const [enrolled, setEnrolled] = useState<boolean>(false);
+  const [busy, setBusy] = useState(false);
+  const [needPwd, setNeedPwd] = useState(false);
+
+  useEffect(() => {
+    setEnrolled(hasPasskeyFor(wallet.id));
+  }, [wallet.id]);
+
+  if (!isPasskeySupported()) return null;
+
+  async function enroll(pwd: string) {
+    setBusy(true);
+    try {
+      // Verify password before enrolling
+      await unlockWallet(wallet, pwd);
+      await enrollPasskey(wallet.id, pwd, wallet.name);
+      setEnrolled(true);
+    } catch (e) {
+      alert(`Couldn't enable biometric: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+      setNeedPwd(false);
+    }
+  }
+
+  function disable() {
+    if (!confirm("Turn off biometric unlock for this wallet?")) return;
+    removePasskey(wallet.id);
+    setEnrolled(false);
+  }
+
+  if (enrolled) {
+    return (
+      <button className="btn-ghost text-accent2" onClick={(e) => { e.stopPropagation(); disable(); }} title="Biometric unlock enabled">
+        🔐 Bio ✓
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <button
+        className="btn-ghost"
+        disabled={busy}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (sessionPwd.current) enroll(sessionPwd.current);
+          else setNeedPwd(true);
+        }}
+        title="Enable biometric unlock"
+      >
+        🔐 Set up bio
+      </button>
+      {needPwd && (
+        <PasswordPrompt
+          title={`Enable biometric — ${wallet.name}`}
+          message="Confirm your wallet password to enroll a passkey for biometric unlock."
+          onCancel={() => setNeedPwd(false)}
+          onSubmit={(pwd) => enroll(pwd)}
+        />
+      )}
     </>
   );
 }

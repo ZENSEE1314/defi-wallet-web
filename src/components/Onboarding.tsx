@@ -92,11 +92,12 @@ function CreateForm({ onBack, onDone }: { onBack: () => void; onDone: (r: Wallet
     setBusy(true);
     try {
       const record = await createMnemonicWallet(name, password);
-      if (enableBio) {
+      if (enableBio && isPasskeySupported()) {
         try {
           await enrollPasskey(record.id, password, name);
         } catch (e) {
-          console.warn("passkey enrollment failed (non-fatal):", e);
+          // Surface the failure so the user knows biometric isn't set up
+          alert(`Wallet created, but biometric setup failed: ${(e as Error).message}\n\nYou can try again later from Wallets → Biometric.`);
         }
       }
       onDone(record, password);
@@ -142,10 +143,12 @@ function UnlockForm({
 }) {
   const [walletId, setWalletId] = useState(wallets[0]?.id ?? "");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true); // default ON — what user expects
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [enrollStatus, setEnrollStatus] = useState<string | null>(null);
   const [bioAvailable, setBioAvailable] = useState(false);
+  const [bioAttempted, setBioAttempted] = useState(false);
 
   useEffect(() => {
     setBioAvailable(isPasskeySupported() && hasPasskeyFor(walletId));
@@ -153,14 +156,36 @@ function UnlockForm({
 
   const wallet = wallets.find((w) => w.id === walletId);
 
+  // Auto-trigger biometric prompt on mount if a passkey is enrolled.
+  // Only runs once per wallet selection so the user can dismiss without re-prompting.
+  useEffect(() => {
+    if (bioAvailable && !bioAttempted && !busy && wallet) {
+      setBioAttempted(true);
+      bioUnlock();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bioAvailable, walletId]);
+
   async function unlock(pw: string, opts: { fromPasskey?: boolean } = {}) {
     if (!wallet) return;
     setErr(null);
     setBusy(true);
     try {
       await unlockWallet(wallet, pw); // verifies the password is correct
+      // Enrollment path: user wants Remember Me, no passkey yet
       if (remember && !opts.fromPasskey && isPasskeySupported() && !hasPasskeyFor(wallet.id)) {
-        try { await enrollPasskey(wallet.id, pw, wallet.name); } catch (e) { console.warn("enroll failed:", e); }
+        setEnrollStatus("Setting up biometric unlock — approve the prompt…");
+        try {
+          await enrollPasskey(wallet.id, pw, wallet.name);
+          setEnrollStatus("✓ Biometric unlock enabled — you'll skip the password next time.");
+          // Brief delay so the user sees the success message
+          await new Promise((r) => setTimeout(r, 600));
+        } catch (e) {
+          const msg = (e as Error).message || "unknown error";
+          setEnrollStatus(`Couldn't enable biometric: ${msg}. You can try again from Wallets → Biometric.`);
+          // Brief delay so the user sees the error before being dropped in
+          await new Promise((r) => setTimeout(r, 1800));
+        }
       }
       onUnlocked(wallet, pw);
     } catch {
@@ -177,7 +202,10 @@ function UnlockForm({
       const pw = await unlockWithPasskey(wallet.id);
       await unlock(pw, { fromPasskey: true });
     } catch (e) {
-      setErr((e as Error).message);
+      const msg = (e as Error).message;
+      // NotAllowedError = user cancelled. Don't treat that as a hard error,
+      // just let them type the password.
+      if (!/cancel|NotAllowed/i.test(msg)) setErr(msg);
       setBusy(false);
     }
   }
@@ -201,12 +229,13 @@ function UnlockForm({
       <PasswordInput label="Password" value={password} onChange={setPassword} placeholder="••••••••" autoFocus onEnter={() => unlock(password)} />
       <label className="flex items-center justify-between text-xs">
         <span className="flex items-center gap-2 text-dim cursor-pointer select-none">
-          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" />
-          Remember me {isPasskeySupported() && <span className="text-dim/70">(via biometric)</span>}
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" disabled={!isPasskeySupported()} />
+          Remember me {isPasskeySupported() ? <span className="text-dim/70">(via biometric)</span> : <span className="text-dim/70">(not supported on this browser)</span>}
         </span>
         <button type="button" onClick={onForgot} className="text-accent hover:underline">Forgot password?</button>
       </label>
       {err && <div className="text-xs text-danger">{err}</div>}
+      {enrollStatus && <div className="text-xs text-accent2 bg-accent2/10 border border-accent2/30 rounded-md p-2">{enrollStatus}</div>}
       <button className="btn w-full mt-2" onClick={() => unlock(password)} disabled={busy || !password}>
         {busy ? "Unlocking…" : "Unlock"}
       </button>
