@@ -3,10 +3,10 @@ import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-const NODE_COUNT = 70;
-const RADIUS = 6;
-const MAX_LINK_DIST = 3.2;
-const SPHERE_RADIUS = 0.18;
+const NODE_COUNT = 60;
+const RADIUS = 5.5;
+const MAX_LINK_DIST = 3.0;
+const SPHERE_RADIUS = 0.22;
 
 export function BlockchainBackground() {
   return (
@@ -69,12 +69,13 @@ function NodeMesh() {
   return (
     <group ref={group}>
       {positions.map((p, i) => {
-        const palette = ["#5b8cff", "#7bf0c0", "#a76dff", "#ff7eb6"];
+        const palette = ["#7da8ff", "#7bf0c0", "#c89dff", "#ff9ec6"];
         const color = palette[i % palette.length];
         return (
           <mesh key={i} position={p}>
-            <sphereGeometry args={[SPHERE_RADIUS, 20, 20]} />
-            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2.2} toneMapped={false} />
+            <sphereGeometry args={[SPHERE_RADIUS, 16, 16]} />
+            {/* Basic material ignores lights — guarantees the spheres render at full brightness. */}
+            <meshBasicMaterial color={color} toneMapped={false} />
           </mesh>
         );
       })}
@@ -82,7 +83,7 @@ function NodeMesh() {
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[linkPositions, 3]} count={linkPositions.length / 3} />
         </bufferGeometry>
-        <lineBasicMaterial color="#7bf0c0" transparent opacity={0.45} toneMapped={false} />
+        <lineBasicMaterial color="#7bf0c0" transparent opacity={0.55} toneMapped={false} />
       </lineSegments>
     </group>
   );
