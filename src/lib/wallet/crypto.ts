@@ -29,10 +29,18 @@ function unb64(s: string): Uint8Array {
   return u8;
 }
 
+// Strict TS in Next 14 narrows Uint8Array to Uint8Array<ArrayBufferLike>;
+// SubtleCrypto wants a BufferSource. Copying to a fresh ArrayBuffer satisfies both.
+function toBuf(u8: Uint8Array): ArrayBuffer {
+  const out = new ArrayBuffer(u8.byteLength);
+  new Uint8Array(out).set(u8);
+  return out;
+}
+
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
-  const baseKey = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  const baseKey = await crypto.subtle.importKey("raw", toBuf(enc.encode(password)), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: PBKDF2_HASH },
+    { name: "PBKDF2", salt: toBuf(salt), iterations: PBKDF2_ITERATIONS, hash: PBKDF2_HASH },
     baseKey,
     { name: "AES-GCM", length: 256 },
     false,
@@ -44,7 +52,7 @@ export async function encrypt(plaintext: string, password: string): Promise<Encr
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LEN));
   const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
   const key = await deriveKey(password, salt);
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plaintext));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: toBuf(iv) }, key, toBuf(enc.encode(plaintext)));
   return { v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) };
 }
 
@@ -54,6 +62,6 @@ export async function decrypt(blob: EncryptedBlob, password: string): Promise<st
   const iv = unb64(blob.iv);
   const ct = unb64(blob.ct);
   const key = await deriveKey(password, salt);
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: toBuf(iv) }, key, toBuf(ct));
   return dec.decode(pt);
 }

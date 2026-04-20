@@ -3,7 +3,7 @@
 
 import type { Web3Wallet } from "@walletconnect/web3wallet";
 import type { CoreTypes, ProposalTypes, SignClientTypes } from "@walletconnect/types";
-import { JsonRpcProvider, Wallet, HDNodeWallet, getAddress } from "ethers";
+import { JsonRpcProvider, Wallet, HDNodeWallet, getAddress, getBytes } from "ethers";
 import { BUILTIN_CHAINS, findChain, type Chain } from "../chains/registry";
 import { unlockWallet, deriveSigner, type WalletRecord } from "../wallet/keystore";
 
@@ -173,7 +173,7 @@ async function dispatch(signer: Wallet | HDNodeWallet, req: { method: string; pa
     }
     case "personal_sign": {
       const msg = req.params[0] as string;
-      const bytes = msg.startsWith("0x") ? Buffer.from(msg.slice(2), "hex") : msg;
+      const bytes = msg.startsWith("0x") ? getBytes(msg) : msg;
       return signer.signMessage(bytes);
     }
     case "eth_sign":
