@@ -113,9 +113,9 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen relative z-10">
+    <div className="flex h-screen relative z-10 pt-12 md:pt-0">
       <Sidebar tab={tab} onChange={setTab} onLock={lock} activeWallet={activeWallet} />
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto p-4 md:p-6">
         {tab === "wallets" && <WalletsPanel state={state} setState={setState} chain={activeChain} sessionPwd={sessionPwd} />}
         {tab === "networks" && <NetworksPanel state={state} setState={setState} />}
         {tab === "send" && <SendPanel state={state} chain={activeChain} sessionPwd={sessionPwd} />}
