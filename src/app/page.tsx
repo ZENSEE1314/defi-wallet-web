@@ -122,7 +122,7 @@ export default function Home() {
     <div className="flex h-screen relative z-10 pt-12 md:pt-0">
       <Sidebar tab={tab} onChange={setTab} onLock={lock} activeWallet={activeWallet} />
       <main className="flex-1 overflow-y-auto p-4 md:p-6">
-        {tab === "wallets" && <WalletsPanel state={state} setState={setState} chain={activeChain} sessionPwd={sessionPwd} />}
+        {tab === "wallets" && <WalletsPanel state={state} setState={setState} chain={activeChain} sessionPwd={sessionPwd} onSend={(walletId) => { setState((s) => ({ ...s, selectedWalletId: walletId })); setTab("send"); }} />}
         {tab === "networks" && <NetworksPanel state={state} setState={setState} />}
         {tab === "send" && <SendPanel state={state} chain={activeChain} sessionPwd={sessionPwd} />}
         {tab === "bot" && <BotPanel />}
@@ -179,12 +179,14 @@ function WalletsPanel({
   state,
   setState,
   chain,
-  sessionPwd
+  sessionPwd,
+  onSend
 }: {
   state: AppState;
   setState: (s: AppState | ((p: AppState) => AppState)) => void;
   chain: Chain;
   sessionPwd: React.MutableRefObject<string | null>;
+  onSend: (walletId: string) => void;
 }) {
   const [nativeBal, setNativeBal] = useState<Record<string, string>>({});
   const [tokenBalances, setTokenBalances] = useState<Record<string, Record<string, string>>>({}); // walletId → tokenAddr → balance
@@ -258,6 +260,7 @@ function WalletsPanel({
             )}
 
             <div className="flex gap-1 mt-3 justify-end flex-wrap">
+              <button className="btn-ghost text-accent2" onClick={(e) => { e.stopPropagation(); onSend(w.id); }}>↗ Send</button>
               <button className="btn-ghost text-accent" onClick={(e) => { e.stopPropagation(); setReceiving(w); }}>Receive</button>
               <BiometricToggle wallet={w} sessionPwd={sessionPwd} />
               <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setRevealing(w); setRevealed(null); }}>Reveal</button>
@@ -439,6 +442,8 @@ function SendPanel({
   sessionPwd: React.MutableRefObject<string | null>;
 }) {
   const wallet = state.wallets.find((w) => w.id === state.selectedWalletId);
+  const [tokens, setTokens] = useState<TokenInfo[]>([]);
+  const [tokenAddr, setTokenAddr] = useState<string>("native"); // "native" or token contract address
   const [to, setTo] = useState("");
   const [value, setValue] = useState("");
   const [password, setPassword] = useState("");
@@ -446,15 +451,21 @@ function SendPanel({
   const [result, setResult] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
 
+  useEffect(() => {
+    setTokens([...getDefaultTokens(chain.id), ...getCustomTokens(chain.id)]);
+  }, [chain.id]);
+
+  const selectedToken = tokens.find((t) => t.address === tokenAddr);
+  const symbol = selectedToken?.symbol ?? chain.symbol;
+  const decimals = selectedToken?.decimals ?? 18;
+
   function handleAddressScan(text: string): boolean {
-    // Accept bare 0x… addresses and EIP-681 URIs like ethereum:0xabc?value=1e18
     const m = text.match(/0x[a-fA-F0-9]{40}/);
     if (!m) return false;
     setTo(m[0]);
     const valueMatch = text.match(/[?&]value=(\d+(?:\.\d+)?(?:e\d+)?)/);
     if (valueMatch) {
       const num = Number(valueMatch[1]);
-      // EIP-681 value is in wei; if this looks like wei (>1e10) divide by 1e18.
       setValue(num > 1e10 ? (num / 1e18).toString() : num.toString());
     }
     return true;
@@ -464,15 +475,27 @@ function SendPanel({
     if (!wallet) return;
     const pwd = sessionPwd.current ?? password;
     if (!to || !value || !pwd) { alert("Fill all fields."); return; }
+    if (!isAddress(to)) { alert("Recipient address is invalid."); return; }
     setBusy(true);
     setResult(null);
     try {
       const secret = await unlockWallet(wallet, pwd);
       const provider = new JsonRpcProvider(chain.rpcUrl, chain.id);
       const signer = deriveSigner(secret, wallet.source).connect(provider);
-      const tx = await signer.sendTransaction({ to, value: parseEther(value) });
+
+      let tx;
+      if (tokenAddr === "native") {
+        tx = await signer.sendTransaction({ to, value: parseEther(value) });
+      } else {
+        // ERC-20 transfer
+        const { Contract, parseUnits } = await import("ethers");
+        const erc20 = new Contract(tokenAddr, ["function transfer(address to, uint256 amount) returns (bool)"], signer);
+        const amount = parseUnits(value, decimals);
+        tx = await erc20.transfer(to, amount);
+      }
       setResult(tx.hash);
       setPassword("");
+      setValue("");
     } catch (e) {
       alert(`Send failed: ${(e as Error).message}`);
     } finally {
@@ -484,9 +507,16 @@ function SendPanel({
 
   return (
     <>
-      <PageHeader title={`Send ${chain.symbol}`} subtitle={`On ${chain.name}`} />
+      <PageHeader title={`Send ${symbol}`} subtitle={`On ${chain.name}`} />
       <div className="glass-card flex flex-col gap-3 max-w-lg">
         <div className="text-xs text-dim">From: <span className="font-mono">{wallet.address}</span></div>
+        <div>
+          <label className="label">Token</label>
+          <select className="input" value={tokenAddr} onChange={(e) => setTokenAddr(e.target.value)}>
+            <option value="native">{chain.symbol} (native)</option>
+            {tokens.map((t) => <option key={t.address} value={t.address}>{t.symbol} — {t.name}</option>)}
+          </select>
+        </div>
         <div>
           <label className="label">To address</label>
           <div className="flex gap-2">
@@ -497,9 +527,9 @@ function SendPanel({
           </div>
           {to && !isAddress(to) && <div className="text-[11px] text-warning mt-1">Not a valid address.</div>}
         </div>
-        <div><label className="label">Amount ({chain.symbol})</label><input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.01" /></div>
+        <div><label className="label">Amount ({symbol})</label><input className="input" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.01" /></div>
         {!sessionPwd.current && <PasswordInput label="Password" value={password} onChange={setPassword} placeholder="••••••••" />}
-        <div><button className="btn" onClick={send} disabled={busy}>{busy ? "Sending…" : "Send"}</button></div>
+        <div><button className="btn" onClick={send} disabled={busy}>{busy ? "Sending…" : `Send ${symbol}`}</button></div>
         {result && (
           <div className="text-xs text-accent2 break-all">
             Sent — <a className="underline" target="_blank" rel="noreferrer" href={`${chain.explorerUrl}/tx/${result}`}>{result}</a>
