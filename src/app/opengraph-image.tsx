@@ -20,7 +20,7 @@ export default function OG() {
           position: "relative"
         }}
       >
-        <div style={{ position: "absolute", inset: 0, opacity: 0.18, backgroundImage: "linear-gradient(rgba(91,140,255,0.45) 1px, transparent 1px), linear-gradient(90deg, rgba(91,140,255,0.45) 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
+        <div style={{ position: "absolute", inset: 0, opacity: 0.18, backgroundImage: "linear-gradient(#5b8cff 1px, transparent 1px), linear-gradient(90deg, #5b8cff 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 40 }}>
           <div style={{ width: 72, height: 72, borderRadius: 18, background: "linear-gradient(135deg, #5b8cff 0%, #7a3dff 60%, #ff3b9a 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44, fontWeight: 800 }}>◆</div>
           <div style={{ fontSize: 32, fontWeight: 600, letterSpacing: -0.5 }}>DeFi Wallet</div>
@@ -35,7 +35,7 @@ export default function OG() {
         </div>
         <div style={{ position: "absolute", bottom: 60, left: 80, right: 80, display: "flex", gap: 12 }}>
           {["Ethereum", "Base", "Arbitrum", "Optimism", "Polygon", "BSC"].map((c) => (
-            <div key={c} style={{ padding: "10px 18px", borderRadius: 999, background: "rgba(91,140,255,0.12)", border: "1px solid rgba(91,140,255,0.4)", color: "#a5c0ff", fontSize: 22 }}>
+            <div key={c} style={{ padding: "10px 18px", borderRadius: 999, background: "#1a2444", border: "1px solid #3a5da8", color: "#a5c0ff", fontSize: 22 }}>
               {c}
             </div>
           ))}
