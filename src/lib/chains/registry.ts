@@ -13,6 +13,7 @@ export const BUILTIN_CHAINS: Chain[] = [
   { id: 42161, name: "Arbitrum One", symbol: "ETH", rpcUrl: "https://arb1.arbitrum.io/rpc", explorerUrl: "https://arbiscan.io" },
   { id: 10, name: "Optimism", symbol: "ETH", rpcUrl: "https://mainnet.optimism.io", explorerUrl: "https://optimistic.etherscan.io" },
   { id: 137, name: "Polygon", symbol: "MATIC", rpcUrl: "https://polygon-rpc.com", explorerUrl: "https://polygonscan.com" },
+  { id: 56, name: "BNB Smart Chain", symbol: "BNB", rpcUrl: "https://bsc-dataseed.bnbchain.org", explorerUrl: "https://bscscan.com" },
   { id: 11155111, name: "Sepolia (testnet)", symbol: "ETH", rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com", explorerUrl: "https://sepolia.etherscan.io" }
 ];
 
