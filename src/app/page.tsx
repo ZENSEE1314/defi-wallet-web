@@ -14,6 +14,7 @@ import { isAddress } from "ethers";
 import { getDefaultTokens, type TokenInfo } from "@/lib/tokens/registry";
 import { getCustomTokens, addCustomToken, removeCustomToken } from "@/lib/tokens/custom";
 import { getErc20Balance, getErc20Metadata } from "@/lib/tokens/balance";
+import { getPrices, fmtUsd, NATIVE_PROXY_BY_CHAIN, type Prices } from "@/lib/tokens/pricing";
 import { loadState, saveState, type AppState } from "@/lib/storage/store";
 import { BUILTIN_CHAINS, findChain, type Chain } from "@/lib/chains/registry";
 import {
@@ -201,6 +202,7 @@ function WalletsPanel({
   const [addingWallet, setAddingWallet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  const [prices, setPrices] = useState<Prices>({});
 
   // Refresh tokens whenever chain changes
   useEffect(() => {
@@ -210,21 +212,46 @@ function WalletsPanel({
   const fetchBalances = useCallback(async () => {
     setRefreshing(true);
     const provider = new JsonRpcProvider(chain.rpcUrl, chain.id);
-    await Promise.all(
-      state.wallets.flatMap((w) => [
+    const balancePromises: Promise<unknown>[] = [];
+    state.wallets.forEach((w) => {
+      balancePromises.push(
         provider.getBalance(w.address)
           .then((wei) => setNativeBal((p) => ({ ...p, [w.id]: formatEther(wei) })))
-          .catch(() => {}),
-        ...tokens.map((t) =>
+          .catch(() => {})
+      );
+      tokens.forEach((t) => {
+        balancePromises.push(
           getErc20Balance(provider, t.address, w.address, t.decimals)
             .then((bal) => setTokenBalances((p) => ({ ...p, [w.id]: { ...(p[w.id] ?? {}), [t.address]: bal } })))
             .catch(() => {})
-        )
-      ])
-    );
+        );
+      });
+    });
+
+    // In parallel: fetch USD prices for native + every token shown
+    const nativeProxy = NATIVE_PROXY_BY_CHAIN[chain.id];
+    const priceTargets = [nativeProxy, ...tokens.map((t) => t.address)].filter(Boolean) as string[];
+    const pricePromise = getPrices(chain.id, priceTargets).then(setPrices).catch(() => {});
+
+    await Promise.all([...balancePromises, pricePromise]);
     setLastRefresh(Date.now());
     setRefreshing(false);
   }, [chain, state.wallets, tokens]);
+
+  // Compute USD value for a single wallet — sum of (balance × price) across native + all tokens
+  function walletUsd(walletId: string): number {
+    const nativePrice = prices[(NATIVE_PROXY_BY_CHAIN[chain.id] ?? "").toLowerCase()] ?? 0;
+    const native = Number(nativeBal[walletId] ?? 0) * nativePrice;
+    const bals = tokenBalances[walletId] ?? {};
+    const tokenSum = tokens.reduce((sum, t) => {
+      const bal = Number(bals[t.address] ?? 0);
+      const price = prices[t.address.toLowerCase()] ?? 0;
+      return sum + bal * price;
+    }, 0);
+    return native + tokenSum;
+  }
+
+  const grandTotalUsd = state.wallets.reduce((s, w) => s + walletUsd(w.id), 0);
 
   // Initial fetch + auto-refresh every 20s
   useEffect(() => {
@@ -237,9 +264,12 @@ function WalletsPanel({
     <>
       <PageHeader title="Wallets" subtitle={`${chain.name} · tap address to copy, scan to receive`} />
       <div className="glass-card flex justify-between items-center flex-wrap gap-2">
-        <div className="text-sm text-dim">
-          {state.wallets.length} wallet{state.wallets.length === 1 ? "" : "s"}
-          <span className="ml-2 text-[11px] text-dim/70">· updated {timeAgo(lastRefresh)}</span>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-dim">Total balance</div>
+          <div className="text-2xl font-bold text-accent2">{fmtUsd(grandTotalUsd)}</div>
+          <div className="text-[11px] text-dim mt-0.5">
+            {state.wallets.length} wallet{state.wallets.length === 1 ? "" : "s"} · updated {timeAgo(lastRefresh)}
+          </div>
         </div>
         <div className="flex gap-2">
           <button className="btn-secondary" onClick={fetchBalances} disabled={refreshing} title="Refresh balances now">
@@ -269,18 +299,27 @@ function WalletsPanel({
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-accent2 font-semibold">{nativeBal[w.id] ?? "…"} {chain.symbol}</div>
+                <div className="text-accent2 font-semibold">{fmtUsd(walletUsd(w.id))}</div>
+                <div className="text-xs text-dim mt-0.5">{nativeBal[w.id] ?? "…"} {chain.symbol}</div>
               </div>
             </div>
 
             {tokens.length > 0 && (
               <div className="mt-3 pt-3 border-t border-border space-y-1">
-                {tokens.map((t) => (
-                  <div key={t.address} className="flex justify-between items-center text-sm">
-                    <span className="text-dim">{t.symbol}</span>
-                    <span className="font-mono">{bals[t.address] ?? "…"}</span>
-                  </div>
-                ))}
+                {tokens.map((t) => {
+                  const bal = bals[t.address];
+                  const px = prices[t.address.toLowerCase()] ?? 0;
+                  const usd = Number(bal ?? 0) * px;
+                  return (
+                    <div key={t.address} className="flex justify-between items-center text-sm">
+                      <span className="text-dim">{t.symbol}</span>
+                      <span className="font-mono">
+                        {bal ?? "…"}
+                        {bal && px > 0 && <span className="text-dim ml-2 text-[11px]">{fmtUsd(usd)}</span>}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
