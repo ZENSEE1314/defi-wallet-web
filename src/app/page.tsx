@@ -197,31 +197,54 @@ function WalletsPanel({
   const [receiving, setReceiving] = useState<WalletRecord | null>(null);
   const [addingToken, setAddingToken] = useState(false);
   const [addingWallet, setAddingWallet] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
 
   // Refresh tokens whenever chain changes
   useEffect(() => {
     setTokens([...getDefaultTokens(chain.id), ...getCustomTokens(chain.id)]);
   }, [chain.id]);
 
-  // Fetch balances
-  useEffect(() => {
+  const fetchBalances = useCallback(async () => {
+    setRefreshing(true);
     const provider = new JsonRpcProvider(chain.rpcUrl, chain.id);
-    state.wallets.forEach((w) => {
-      provider.getBalance(w.address).then((wei) => setNativeBal((p) => ({ ...p, [w.id]: formatEther(wei) }))).catch(() => {});
-      tokens.forEach((t) => {
-        getErc20Balance(provider, t.address, w.address, t.decimals)
-          .then((bal) => setTokenBalances((p) => ({ ...p, [w.id]: { ...(p[w.id] ?? {}), [t.address]: bal } })))
-          .catch(() => {});
-      });
-    });
-  }, [state.wallets, chain, tokens]);
+    await Promise.all(
+      state.wallets.flatMap((w) => [
+        provider.getBalance(w.address)
+          .then((wei) => setNativeBal((p) => ({ ...p, [w.id]: formatEther(wei) })))
+          .catch(() => {}),
+        ...tokens.map((t) =>
+          getErc20Balance(provider, t.address, w.address, t.decimals)
+            .then((bal) => setTokenBalances((p) => ({ ...p, [w.id]: { ...(p[w.id] ?? {}), [t.address]: bal } })))
+            .catch(() => {})
+        )
+      ])
+    );
+    setLastRefresh(Date.now());
+    setRefreshing(false);
+  }, [chain, state.wallets, tokens]);
+
+  // Initial fetch + auto-refresh every 20s
+  useEffect(() => {
+    fetchBalances();
+    const id = setInterval(fetchBalances, 20_000);
+    return () => clearInterval(id);
+  }, [fetchBalances]);
 
   return (
     <>
       <PageHeader title="Wallets" subtitle={`${chain.name} · tap address to copy, scan to receive`} />
-      <div className="glass-card flex justify-between items-center">
-        <div className="text-sm text-dim">{state.wallets.length} wallet{state.wallets.length === 1 ? "" : "s"}</div>
-        <button className="btn" onClick={() => setAddingWallet(true)}>+ Add wallet</button>
+      <div className="glass-card flex justify-between items-center flex-wrap gap-2">
+        <div className="text-sm text-dim">
+          {state.wallets.length} wallet{state.wallets.length === 1 ? "" : "s"}
+          <span className="ml-2 text-[11px] text-dim/70">· updated {timeAgo(lastRefresh)}</span>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={fetchBalances} disabled={refreshing} title="Refresh balances now">
+            {refreshing ? "↻ Refreshing…" : "↻ Refresh"}
+          </button>
+          <button className="btn" onClick={() => setAddingWallet(true)}>+ Add wallet</button>
+        </div>
       </div>
       {state.wallets.map((w) => {
         const isActive = w.id === state.selectedWalletId;
@@ -463,16 +486,20 @@ function SendPanel({
   // Reserve for native gas — keep ~0.001 native (covers many txs on cheap chains).
   const NATIVE_GAS_RESERVE = 0.001;
 
-  // Refresh balance whenever wallet / chain / token changes
+  // Refresh balance whenever wallet / chain / token changes, then poll every 15s
   useEffect(() => {
     if (!wallet) return;
-    setBalance(null);
     const provider = new JsonRpcProvider(chain.rpcUrl, chain.id);
-    if (tokenAddr === "native") {
-      provider.getBalance(wallet.address).then((wei) => setBalance(formatEther(wei))).catch(() => setBalance("?"));
-    } else {
-      getErc20Balance(provider, tokenAddr, wallet.address, decimals).then(setBalance).catch(() => setBalance("?"));
-    }
+    const fetchOne = () => {
+      if (tokenAddr === "native") {
+        provider.getBalance(wallet.address).then((wei) => setBalance(formatEther(wei))).catch(() => setBalance("?"));
+      } else {
+        getErc20Balance(provider, tokenAddr, wallet.address, decimals).then(setBalance).catch(() => setBalance("?"));
+      }
+    };
+    fetchOne();
+    const id = setInterval(fetchOne, 15_000);
+    return () => clearInterval(id);
   }, [wallet, chain, tokenAddr, decimals, result]);
 
   function setMax() {
@@ -817,6 +844,15 @@ function AddTokenModal({
       </div>
     </div>
   );
+}
+
+function timeAgo(ts: number): string {
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 5) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  return `${Math.floor(min / 60)}h ago`;
 }
 
 function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
