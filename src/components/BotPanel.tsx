@@ -1,11 +1,24 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { botApi, loadConn, saveConn, type BotConn, type LogEvent, type Status, type Trade } from "@/lib/bot/client";
+import {
+  loadLogHistory,
+  loadTradeHistory,
+  saveLogHistory,
+  saveTradeHistory,
+  mergeLogs,
+  mergeTrades,
+  clearLogHistory,
+  clearTradeHistory,
+  tradesToCsv,
+  downloadFile
+} from "@/lib/bot/history";
 
 export function BotPanel() {
   const [conn, setConn] = useState<BotConn | null>(null);
   const [editing, setEditing] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
+  // Full accumulated history persisted in localStorage (NOT just the latest page)
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [tab, setTab] = useState<"logs" | "trades">("logs");
@@ -16,15 +29,26 @@ export function BotPanel() {
     const c = loadConn();
     setConn(c);
     if (!c) setEditing(true);
+    // Load any history from previous sessions
+    setLogs(loadLogHistory());
+    setTrades(loadTradeHistory());
   }, []);
 
   const refresh = useCallback(async () => {
     if (!conn) return;
     try {
-      const [s, l, t] = await Promise.all([botApi.status(conn), botApi.logs(conn, 100), botApi.trades(conn, 50)]);
+      const [s, l, t] = await Promise.all([botApi.status(conn), botApi.logs(conn, 200), botApi.trades(conn, 100)]);
       setStatus(s);
-      setLogs(l.events);
-      setTrades(t.trades);
+      setLogs((prev) => {
+        const merged = mergeLogs(prev, l.events);
+        if (merged !== prev) saveLogHistory(merged);
+        return merged;
+      });
+      setTrades((prev) => {
+        const merged = mergeTrades(prev, t.trades);
+        if (merged !== prev) saveTradeHistory(merged);
+        return merged;
+      });
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);
@@ -103,11 +127,34 @@ export function BotPanel() {
           )}
 
           <div className="glass-card">
-            <div className="flex gap-2 mb-3 border-b border-border">
+            <div className="flex gap-2 mb-3 border-b border-border items-center flex-wrap">
               <TabBtn active={tab === "logs"} onClick={() => setTab("logs")}>Logs ({logs.length})</TabBtn>
               <TabBtn active={tab === "trades"} onClick={() => setTab("trades")}>Trades ({trades.length})</TabBtn>
+              <div className="ml-auto flex gap-2 pb-2">
+                {tab === "trades" && trades.length > 0 && (
+                  <button
+                    className="btn-ghost text-accent"
+                    onClick={() => downloadFile(`trades-${new Date().toISOString().slice(0, 10)}.csv`, tradesToCsv(trades))}
+                  >
+                    Export CSV
+                  </button>
+                )}
+                <button
+                  className="btn-ghost text-danger"
+                  onClick={() => {
+                    if (!confirm(`Clear all ${tab}? This wipes the local history (the bot keeps its own server-side ring buffer).`)) return;
+                    if (tab === "logs") { clearLogHistory(); setLogs([]); }
+                    else { clearTradeHistory(); setTrades([]); }
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
             </div>
             {tab === "logs" ? <LogsView events={logs} /> : <TradesView trades={trades} />}
+            <p className="text-[11px] text-dim mt-2">
+              History persists across refreshes (capped at 5000 logs / 2000 trades). The bot itself keeps the latest 500 logs / 200 trades server-side.
+            </p>
           </div>
         </>
       )}
@@ -195,9 +242,11 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 function LogsView({ events }: { events: LogEvent[] }) {
   if (events.length === 0) return <div className="text-dim text-sm p-3">No events yet. The bot logs every scan, signal, buy, sell, and heartbeat here.</div>;
+  // History is stored chronological; reverse for newest-first display
+  const display = [...events].reverse();
   return (
-    <div className="font-mono text-[11px] max-h-[420px] overflow-y-auto space-y-0.5">
-      {events.map((e, i) => <LogLine key={i} e={e} />)}
+    <div className="font-mono text-[11px] max-h-[480px] overflow-y-auto space-y-0.5">
+      {display.map((e, i) => <LogLine key={i} e={e} />)}
     </div>
   );
 }
@@ -243,36 +292,61 @@ function summarize(e: LogEvent): string {
 
 function TradesView({ trades }: { trades: Trade[] }) {
   if (trades.length === 0) return <div className="text-dim text-sm p-3">No trades yet. Buys and sells from any strategy will appear here as they happen.</div>;
+  // Compute aggregate W/L summary
+  const sells = trades.filter((t) => t.kind === "sell");
+  const wins = sells.filter((t) => t.reason === "tp" || (t.pnlPct ?? 0) > 0).length;
+  const losses = sells.filter((t) => t.reason === "sl" || (t.pnlPct ?? 0) < 0).length;
+  const avgPnl = sells.length > 0
+    ? sells.reduce((s, t) => s + (t.pnlPct ?? 0), 0) / sells.length
+    : 0;
+  // Newest first
+  const display = [...trades].reverse();
   return (
-    <div className="overflow-x-auto -mx-4">
-      <table className="w-full text-xs min-w-[640px]">
-        <thead>
-          <tr className="text-dim uppercase tracking-wider text-[10px]">
-            <th className="text-left px-3 py-2">Time</th>
-            <th className="text-left px-3 py-2">Side</th>
-            <th className="text-left px-3 py-2">Source</th>
-            <th className="text-left px-3 py-2">Token</th>
-            <th className="text-right px-3 py-2">Amount / PnL</th>
-            <th className="text-left px-3 py-2">Mode</th>
-            <th className="text-left px-3 py-2">Tx</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((t, i) => (
-            <tr key={i} className="border-t border-border">
-              <td className="px-3 py-2 text-dim">{new Date(t.ts).toLocaleTimeString()}</td>
-              <td className={`px-3 py-2 font-semibold ${t.kind === "buy" ? "text-accent2" : "text-warning"}`}>{t.kind.toUpperCase()}</td>
-              <td className="px-3 py-2 text-dim">{t.source}</td>
-              <td className="px-3 py-2 font-mono">{t.symbol ?? t.token.slice(0, 8) + "…"}</td>
-              <td className="px-3 py-2 text-right font-mono">
-                {t.amountEth ? `${t.amountEth} ETH` : t.pnlPct !== undefined ? `${t.pnlPct.toFixed(2)}%` : t.reason ?? ""}
-              </td>
-              <td className={`px-3 py-2 ${t.paper ? "text-accent2" : "text-danger"}`}>{t.paper ? "paper" : "LIVE"}</td>
-              <td className="px-3 py-2 font-mono text-dim">{t.hash.slice(0, 10)}…</td>
+    <>
+      <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+        <div className="bg-bg/40 border border-border rounded-md p-2">
+          <div className="text-dim text-[10px] uppercase">Wins</div>
+          <div className="text-accent2 font-bold text-base">{wins}</div>
+        </div>
+        <div className="bg-bg/40 border border-border rounded-md p-2">
+          <div className="text-dim text-[10px] uppercase">Losses</div>
+          <div className="text-danger font-bold text-base">{losses}</div>
+        </div>
+        <div className="bg-bg/40 border border-border rounded-md p-2">
+          <div className="text-dim text-[10px] uppercase">Avg PnL</div>
+          <div className={`font-bold text-base ${avgPnl >= 0 ? "text-accent2" : "text-danger"}`}>{avgPnl.toFixed(2)}%</div>
+        </div>
+      </div>
+      <div className="overflow-x-auto -mx-4 max-h-[480px] overflow-y-auto">
+        <table className="w-full text-xs min-w-[640px]">
+          <thead className="sticky top-0 bg-elev">
+            <tr className="text-dim uppercase tracking-wider text-[10px]">
+              <th className="text-left px-3 py-2">Time</th>
+              <th className="text-left px-3 py-2">Side</th>
+              <th className="text-left px-3 py-2">Source</th>
+              <th className="text-left px-3 py-2">Token</th>
+              <th className="text-right px-3 py-2">Amount / PnL</th>
+              <th className="text-left px-3 py-2">Mode</th>
+              <th className="text-left px-3 py-2">Tx</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {display.map((t, i) => (
+              <tr key={i} className="border-t border-border">
+                <td className="px-3 py-2 text-dim whitespace-nowrap">{new Date(t.ts).toLocaleString()}</td>
+                <td className={`px-3 py-2 font-semibold ${t.kind === "buy" ? "text-accent2" : "text-warning"}`}>{t.kind.toUpperCase()}</td>
+                <td className="px-3 py-2 text-dim">{t.source}</td>
+                <td className="px-3 py-2 font-mono">{t.symbol ?? t.token.slice(0, 8) + "…"}</td>
+                <td className="px-3 py-2 text-right font-mono">
+                  {t.amountEth ? `${t.amountEth} ETH` : t.pnlPct !== undefined ? `${t.pnlPct.toFixed(2)}%` : t.reason ?? ""}
+                </td>
+                <td className={`px-3 py-2 ${t.paper ? "text-accent2" : "text-danger"}`}>{t.paper ? "paper" : "LIVE"}</td>
+                <td className="px-3 py-2 font-mono text-dim">{t.hash.slice(0, 10)}…</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
