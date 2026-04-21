@@ -7,6 +7,7 @@ import { PasswordInput } from "@/components/PasswordInput";
 import { QrScanModal } from "@/components/QrScanModal";
 import { ReceiveModal } from "@/components/ReceiveModal";
 import { AddWalletModal } from "@/components/AddWalletModal";
+import { HistoryModal } from "@/components/HistoryModal";
 import { Onboarding } from "@/components/Onboarding";
 import { BotPanel } from "@/components/BotPanel";
 import { isAddress } from "ethers";
@@ -195,6 +196,7 @@ function WalletsPanel({
   const [revealed, setRevealed] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<WalletRecord | null>(null);
   const [receiving, setReceiving] = useState<WalletRecord | null>(null);
+  const [historyOf, setHistoryOf] = useState<WalletRecord | null>(null);
   const [addingToken, setAddingToken] = useState(false);
   const [addingWallet, setAddingWallet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -285,6 +287,7 @@ function WalletsPanel({
             <div className="flex gap-1 mt-3 justify-end flex-wrap">
               <button className="btn-ghost text-accent2" onClick={(e) => { e.stopPropagation(); onSend(w.id); }}>↗ Send</button>
               <button className="btn-ghost text-accent" onClick={(e) => { e.stopPropagation(); setReceiving(w); }}>Receive</button>
+              <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setHistoryOf(w); }}>📜 History</button>
               <BiometricToggle wallet={w} sessionPwd={sessionPwd} />
               <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); setRevealing(w); setRevealed(null); }}>Reveal</button>
               <button className="btn-ghost text-danger" onClick={(e) => { e.stopPropagation(); setConfirmDelete(w); }}>Delete</button>
@@ -306,6 +309,18 @@ function WalletsPanel({
           walletName={receiving.name}
           chainName={chain.name}
           onClose={() => setReceiving(null)}
+        />
+      )}
+
+      {historyOf && (
+        <HistoryModal
+          address={historyOf.address}
+          walletName={historyOf.name}
+          chainId={chain.id}
+          chainName={chain.name}
+          nativeSymbol={chain.symbol}
+          explorerUrl={chain.explorerUrl}
+          onClose={() => setHistoryOf(null)}
         />
       )}
 
